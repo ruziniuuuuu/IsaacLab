@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -757,15 +757,19 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">velocity_limit</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The velocity limit for the actuator group. Shape is (num_envs, num_joints).</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The joint velocity limit for the actuator group [rad/s or m/s]. Shape is (num_envs, num_joints).</span>
 
-<span class="sd">    For implicit actuators, the :attr:`velocity_limit` and :attr:`velocity_limit_sim` are the same.</span>
+<span class="sd">    The peak velocity of the actuated joint (the actuator&#39;s rated speed reflected at the joint,</span>
+<span class="sd">    after any gearbox). Feeds the articulation data buffers (e.g. soft joint velocity limits) and</span>
+<span class="sd">    explicit-model effort clipping; it is not pushed to the physics solver. Defaults to</span>
+<span class="sd">    :attr:`velocity_limit_sim` when only the solver clamp is configured.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">velocity_limit_sim</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;The velocity limit for the actuator group in the simulation. Shape is (num_envs, num_joints).</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The solver-level velocity clamp for the actuator group [rad/s or m/s]. Shape is (num_envs, num_joints).</span>
 
-<span class="sd">    For implicit actuators, the :attr:`velocity_limit` and :attr:`velocity_limit_sim` are the same.</span>
+<span class="sd">    Written to the simulation (PhysX ``maxJointVelocity``); resolved independently of</span>
+<span class="sd">    :attr:`velocity_limit`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">stiffness</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>
@@ -1119,7 +1123,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

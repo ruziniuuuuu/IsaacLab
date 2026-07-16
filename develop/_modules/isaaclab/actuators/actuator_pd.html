@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -763,28 +763,28 @@
                 <span class="p">)</span>
 
         <span class="c1"># velocity limits</span>
-        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># throw a warning that previously this was not set</span>
-            <span class="c1"># it leads to different simulation behavior so we want to remain backwards compatible</span>
-            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-                <span class="s2">&quot;The &lt;ImplicitActuatorCfg&gt; object has a value for &#39;velocity_limit&#39;.&quot;</span>
-                <span class="s2">&quot; Previously, although this value was specified, it was not getting used by implicit&quot;</span>
-                <span class="s2">&quot; actuators. Since this parameter affects the simulation behavior, we continue to not&quot;</span>
-                <span class="s2">&quot; use it. This parameter will be removed in the future.&quot;</span>
-                <span class="s2">&quot; To set the velocity limit, please use &#39;velocity_limit_sim&#39; instead.&quot;</span>
-            <span class="p">)</span>
-            <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">elif</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1"># TODO: Eventually we want to get rid of &#39;velocity_limit&#39; for implicit actuators.</span>
-            <span class="c1">#   We should do this once all parameters have an &quot;_sim&quot; suffix.</span>
+        <span class="c1"># &#39;velocity_limit&#39; is the joint&#39;s peak velocity (the actuator&#39;s rated speed</span>
+        <span class="c1"># reflected at the joint): it feeds the data buffers</span>
+        <span class="c1"># (:attr:`ArticulationData.soft_joint_vel_limits`, read by e.g. the</span>
+        <span class="c1"># ``joint_vel_out_of_limit`` termination) but is NOT pushed to the physics</span>
+        <span class="c1"># solver. &#39;velocity_limit_sim&#39; is a solver-level hard clamp (PhysX</span>
+        <span class="c1"># ``maxJointVelocity``) with no physical counterpart -- a physical actuator</span>
+        <span class="c1"># limits joint speed through its torque curve, not a kinematic clamp. The</span>
+        <span class="c1"># two are therefore resolved independently: when only the sim clamp is</span>
+        <span class="c1"># given, it doubles as the joint velocity limit so the data buffers stay</span>
+        <span class="c1"># meaningful; when only &#39;velocity_limit&#39; is given, the solver keeps the</span>
+        <span class="c1"># USD-authored clamp.</span>
+        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span>
-        <span class="k">elif</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="o">!=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="s2">&quot;The &lt;ImplicitActuatorCfg&gt; object has set both &#39;velocity_limit_sim&#39; and &#39;velocity_limit&#39;&quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot; and they have different values </span><span class="si">{</span><span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span><span class="si">}</span><span class="s2"> != </span><span class="si">{</span><span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span><span class="si">}</span><span class="s2">.&quot;</span>
-                    <span class="s2">&quot; Please only set &#39;velocity_limit_sim&#39; for implicit actuators.&quot;</span>
-                <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">velocity_limit_sim</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># notify about the behavior change: this value used to be ignored for implicit actuators</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">&quot;The &lt;ImplicitActuatorCfg&gt; object has a value for &#39;velocity_limit&#39;. Previously, this value&quot;</span>
+                <span class="s2">&quot; was ignored for implicit actuators. It now populates the joint velocity-limit data buffers&quot;</span>
+                <span class="s2">&quot; (e.g. &#39;soft_joint_vel_limits&#39; used by velocity-limit terminations and rewards), but it is&quot;</span>
+                <span class="s2">&quot; still not pushed to the physics solver. To set a solver-level velocity clamp, please use&quot;</span>
+                <span class="s2">&quot; &#39;velocity_limit_sim&#39;.&quot;</span>
+            <span class="p">)</span>
 
         <span class="c1"># set implicit actuator model flag</span>
         <span class="n">ImplicitActuator</span><span class="o">.</span><span class="n">is_implicit_model</span> <span class="o">=</span> <span class="kc">True</span>
@@ -1228,7 +1228,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

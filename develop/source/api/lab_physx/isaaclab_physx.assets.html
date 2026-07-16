@@ -66,7 +66,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -1021,6 +1021,8 @@
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.default_spatial_tendon_offset"><code class="docutils literal notranslate"><span class="pre">ArticulationData.default_spatial_tendon_offset</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.default_spatial_tendon_stiffness"><code class="docutils literal notranslate"><span class="pre">ArticulationData.default_spatial_tendon_stiffness</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_limit"><code class="docutils literal notranslate"><span class="pre">ArticulationData.fixed_tendon_limit</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.has_body_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.has_body_ordering</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.has_joint_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.has_joint_ordering</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_friction"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_friction</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_limits"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_limits</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_ordering</span></code></a></li>
@@ -5187,6 +5189,12 @@ pointer offsets into these stable buffers and are therefore also safe to cache.<
 <tr class="row-odd"><td><p><a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_limit" title="isaaclab_physx.assets.ArticulationData.fixed_tendon_limit"><code class="xref py py-obj docutils literal notranslate"><span class="pre">fixed_tendon_limit</span></code></a></p></td>
 <td><p>Shorthand for <a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_pos_limits" title="isaaclab_physx.assets.ArticulationData.fixed_tendon_pos_limits"><code class="xref py py-attr docutils literal notranslate"><span class="pre">fixed_tendon_pos_limits</span></code></a>.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.has_body_ordering" title="isaaclab_physx.assets.ArticulationData.has_body_ordering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_body_ordering</span></code></a></p></td>
+<td><p>Whether a nonidentity body ordering is active.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.has_joint_ordering" title="isaaclab_physx.assets.ArticulationData.has_joint_ordering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_joint_ordering</span></code></a></p></td>
+<td><p>Whether a nonidentity joint ordering is active.</p></td>
+</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.joint_friction" title="isaaclab_physx.assets.ArticulationData.joint_friction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">joint_friction</span></code></a></p></td>
 <td><p>Shorthand for <a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.joint_friction_coeff" title="isaaclab_physx.assets.ArticulationData.joint_friction_coeff"><code class="xref py py-attr docutils literal notranslate"><span class="pre">joint_friction_coeff</span></code></a>.</p></td>
 </tr>
@@ -6185,6 +6193,22 @@ tendon stiffness manually.</p>
 <dt class="sig sig-object py" id="isaaclab_physx.assets.ArticulationData.fixed_tendon_limit">
 <em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fixed_tendon_limit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../lab/isaaclab.utils.html#isaaclab.utils.warp.ProxyArray" title="isaaclab.utils.warp.proxy_array.ProxyArray"><span class="pre">ProxyArray</span></a></em><a class="headerlink" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_limit" title="Link to this definition">#</a></dt>
 <dd><p>Shorthand for <a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_pos_limits" title="isaaclab_physx.assets.ArticulationData.fixed_tendon_pos_limits"><code class="xref py py-attr docutils literal notranslate"><span class="pre">fixed_tendon_pos_limits</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="isaaclab_physx.assets.ArticulationData.has_body_ordering">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_body_ordering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><a class="headerlink" href="#isaaclab_physx.assets.ArticulationData.has_body_ordering" title="Link to this definition">#</a></dt>
+<dd><p>Whether a nonidentity body ordering is active.</p>
+<p>Derived from <a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.body_ordering" title="isaaclab_physx.assets.ArticulationData.body_ordering"><code class="xref py py-attr docutils literal notranslate"><span class="pre">body_ordering</span></code></a>; a non-<code class="docutils literal notranslate"><span class="pre">None</span></code> map always denotes an
+actual permutation between backend and public body order.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="isaaclab_physx.assets.ArticulationData.has_joint_ordering">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_joint_ordering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><a class="headerlink" href="#isaaclab_physx.assets.ArticulationData.has_joint_ordering" title="Link to this definition">#</a></dt>
+<dd><p>Whether a nonidentity joint ordering is active.</p>
+<p>Derived from <a class="reference internal" href="#isaaclab_physx.assets.ArticulationData.joint_ordering" title="isaaclab_physx.assets.ArticulationData.joint_ordering"><code class="xref py py-attr docutils literal notranslate"><span class="pre">joint_ordering</span></code></a>; a non-<code class="docutils literal notranslate"><span class="pre">None</span></code> map always denotes an
+actual permutation between backend and public joint order.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -11941,6 +11965,8 @@ flag — enabled in normal mode, disabled with <code class="docutils literal not
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.default_spatial_tendon_offset"><code class="docutils literal notranslate"><span class="pre">ArticulationData.default_spatial_tendon_offset</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.default_spatial_tendon_stiffness"><code class="docutils literal notranslate"><span class="pre">ArticulationData.default_spatial_tendon_stiffness</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.fixed_tendon_limit"><code class="docutils literal notranslate"><span class="pre">ArticulationData.fixed_tendon_limit</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.has_body_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.has_body_ordering</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.has_joint_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.has_joint_ordering</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_friction"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_friction</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_limits"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_limits</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_physx.assets.ArticulationData.joint_ordering"><code class="docutils literal notranslate"><span class="pre">ArticulationData.joint_ordering</span></code></a></li>
@@ -12389,7 +12415,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -693,6 +693,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warp</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wp</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.assets.articulation</span><span class="w"> </span><span class="kn">import</span> <span class="n">ordering_kernels</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.assets.articulation.base_articulation_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseArticulationData</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.utils.buffers</span><span class="w"> </span><span class="kn">import</span> <span class="n">TimestampedBufferWarp</span> <span class="k">as</span> <span class="n">TimestampedBuffer</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.utils.buffers</span><span class="w"> </span><span class="kn">import</span> <span class="n">reset_timestamps</span>
@@ -817,9 +818,15 @@
 <span class="sd">        ``_fk_timestamp`` is set to ``-1.0`` to force a refresh on the next read of any</span>
 <span class="sd">        property that depends on body poses (``body_link_pose_w``, the Jacobian properties,</span>
 <span class="sd">        ``mass_matrix``).</span>
+
+<span class="sd">        This out-of-band FK path also republishes the user-order body-state shadows via</span>
+<span class="sd">        :meth:`_refresh_user_order_body_state`: the post-step callback only fires inside a</span>
+<span class="sd">        sim step, so a manual write followed by an FK refresh would otherwise leave the</span>
+<span class="sd">        passthrough ``body_link_pose_w`` / ``body_com_vel_w`` shadows stale.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fk_timestamp</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span><span class="p">:</span>
             <span class="n">SimulationManager</span><span class="o">.</span><span class="n">forward</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_refresh_user_order_body_state</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fk_timestamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_reset_pose</span><span class="p">(</span>
@@ -901,10 +908,10 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">body_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body names in the order parsed by the simulation view.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body names in public order (configured ordering when set, otherwise backend order).&quot;&quot;&quot;</span>
 
     <span class="n">joint_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Joint names in the order parsed by the simulation view.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Joint names in public order (configured ordering when set, otherwise backend order).&quot;&quot;&quot;</span>
 
     <span class="n">fixed_tendon_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Fixed tendon names in the order parsed by the simulation view.&quot;&quot;&quot;</span>
@@ -1148,18 +1155,26 @@
                 <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">vec2f</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span>
             <span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits</span><span class="p">)</span>
-        <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
-            <span class="n">articulation_kernels</span><span class="o">.</span><span class="n">concat_joint_pos_limits_lower_and_upper</span><span class="p">,</span>
-            <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span>
-            <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span><span class="p">,</span>
-            <span class="p">],</span>
-            <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits</span><span class="p">,</span>
-            <span class="p">],</span>
-            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
-        <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_timestamp</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span><span class="p">:</span>
+            <span class="n">joint_pos_limits_lower</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span>
+            <span class="p">)</span>
+            <span class="n">joint_pos_limits_upper</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span>
+            <span class="p">)</span>
+            <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                <span class="n">articulation_kernels</span><span class="o">.</span><span class="n">concat_joint_pos_limits_lower_and_upper</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span>
+                <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
+                    <span class="n">joint_pos_limits_lower</span><span class="p">,</span>
+                    <span class="n">joint_pos_limits_upper</span><span class="p">,</span>
+                <span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits</span><span class="p">,</span>
+                <span class="p">],</span>
+                <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_timestamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_ta</span>
 
     <span class="nd">@property</span>
@@ -1355,7 +1370,7 @@
                 <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">root_com_vel_w</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">root_link_pose_w</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">body_com_pos_b</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">,</span>
                 <span class="p">],</span>
                 <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_vel_w</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
@@ -1383,7 +1398,7 @@
                 <span class="n">dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span>
                 <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">root_link_pose_w</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">body_com_pos_b</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">,</span>
                 <span class="p">],</span>
                 <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_root_com_pose_w</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
@@ -1414,6 +1429,9 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Body mass ``wp.float32`` in the world frame.</span>
 
 <span class="sd">        Shape is (num_instances, num_bodies), dtype = wp.float32. In torch this resolves to (num_instances, num_bodies).</span>
+
+<span class="sd">        With body ordering active, direct writes to the Newton model arrays bypass the public-order</span>
+<span class="sd">        buffers; use the asset setters instead.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_ta</span>
 
@@ -1520,22 +1538,21 @@
 <span class="sd">        All values are relative to the world.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span><span class="p">:</span>
+            <span class="n">body_ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span>
             <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
-                <span class="n">shared_kernels</span><span class="o">.</span><span class="n">derive_body_acceleration_from_body_com_velocities</span><span class="p">,</span>
+                <span class="n">articulation_kernels</span><span class="o">.</span><span class="n">get_body_com_acc_from_body_com_vel_ordered</span><span class="p">,</span>
                 <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span>
                 <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
                 <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span><span class="p">,</span>
-                    <span class="n">SimulationManager</span><span class="o">.</span><span class="n">get_dt</span><span class="p">(),</span>
                     <span class="bp">self</span><span class="o">.</span><span class="n">_previous_body_com_vel</span><span class="p">,</span>
+                    <span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend</span> <span class="k">if</span> <span class="n">body_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">body_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
+                    <span class="n">SimulationManager</span><span class="o">.</span><span class="n">get_dt</span><span class="p">(),</span>
                 <span class="p">],</span>
-                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="o">.</span><span class="n">data</span><span class="p">,</span>
-                <span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="o">.</span><span class="n">data</span><span class="p">],</span>
             <span class="p">)</span>
-            <span class="c1"># set the buffer data and timestamp</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="o">.</span><span class="n">timestamp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_timestamp</span>
-            <span class="c1"># update the previous velocity</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w_ta</span>
 
     <span class="nd">@property</span>
@@ -1605,13 +1622,17 @@
             <span class="n">J</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_buf_flat</span><span class="p">,</span>
             <span class="n">joint_S_s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_S_s_buf</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="n">joint_ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span>
         <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
             <span class="n">articulation_kernels</span><span class="o">.</span><span class="n">gather_jacobian_rows</span><span class="p">,</span>
             <span class="n">dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_com_jacobian_w_buf</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
             <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_buf</span><span class="p">,</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_view_art_ids</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_link_offset</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_body_user_to_backend</span><span class="p">,</span>
+                <span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span> <span class="k">if</span> <span class="n">joint_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_num_base_dofs</span><span class="p">,</span>
+                <span class="n">joint_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
             <span class="p">],</span>
             <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_com_jacobian_w_buf</span><span class="p">],</span>
             <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
@@ -1636,7 +1657,7 @@
             <span class="n">dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_link_jacobian_w_buf</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_link_jacobian_w_buf</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">],),</span>
             <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                 <span class="n">link_pose_w</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">body_com_pos_b</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_link_offset</span><span class="p">,</span>
                 <span class="n">com_jac</span><span class="o">.</span><span class="n">warp</span><span class="p">,</span>
             <span class="p">],</span>
@@ -1672,12 +1693,16 @@
             <span class="n">body_I_s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_mass_matrix_body_I_s_buf</span><span class="p">,</span>
             <span class="n">joint_S_s</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_S_s_buf</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="n">joint_ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span>
         <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
             <span class="n">articulation_kernels</span><span class="o">.</span><span class="n">gather_mass_matrix_rows</span><span class="p">,</span>
             <span class="n">dim</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_mass_matrix_buf</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
             <span class="n">inputs</span><span class="o">=</span><span class="p">[</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_mass_matrix_full_buf</span><span class="p">,</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_view_art_ids</span><span class="p">,</span>
+                <span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span> <span class="k">if</span> <span class="n">joint_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_num_base_dofs</span><span class="p">,</span>
+                <span class="n">joint_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">,</span>
             <span class="p">],</span>
             <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_mass_matrix_buf</span><span class="p">],</span>
             <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
@@ -2326,6 +2351,18 @@
         <span class="c1"># On first init, _create_buffers() handles this after all buffers exist.</span>
         <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_root_link_pose_w_ta&quot;</span><span class="p">):</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_pin_proxy_arrays</span><span class="p">()</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span><span class="p">:</span>
+                <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                    <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                    <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span>
+                    <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                    <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_previous_joint_vel</span><span class="p">],</span>
+                    <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_previous_joint_vel</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_previous_body_com_vel</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span><span class="p">)</span>
+            <span class="n">reset_timestamps</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_acc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="p">])</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_create_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create buffers for the root data.&quot;&quot;&quot;</span>
@@ -2420,6 +2457,11 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_vel_w</span> <span class="o">=</span> <span class="n">TimestampedBuffer</span><span class="p">(</span>
             <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">spatial_vectorf</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span>
         <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="c1"># -- com frame w.r.t. link frame</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pose_b</span> <span class="o">=</span> <span class="n">TimestampedBuffer</span><span class="p">(</span>
             <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">transformf</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span>
@@ -2445,6 +2487,16 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_joint_acc</span> <span class="o">=</span> <span class="n">TimestampedBuffer</span><span class="p">(</span>
             <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span>
         <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_user</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="c1"># -- dynamics quantities for task-space controllers</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_create_jacobian_buffers</span><span class="p">(</span><span class="n">SimulationManager</span><span class="o">.</span><span class="n">get_model</span><span class="p">())</span>
         <span class="c1"># Empty memory pre-allocations</span>
@@ -2519,6 +2571,8 @@
         <span class="c1"># Free-root DoF columns Newton fills for floating-base (0 fixed-base, 6 floating-base);</span>
         <span class="c1"># included in the DoF axis to match the cross-library industry convention.</span>
         <span class="n">num_base_dofs</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_root_view</span><span class="o">.</span><span class="n">is_fixed_base</span> <span class="k">else</span> <span class="mi">6</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_base_dofs</span> <span class="o">=</span> <span class="n">num_base_dofs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_body_user_to_backend</span><span class="p">:</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="c1"># Flattened (num_worlds*num_per_view,) view-to-model index map for the gather kernels.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_view_art_ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_root_view</span><span class="o">.</span><span class="n">articulation_ids</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="o">-</span><span class="mi">1</span><span class="p">,))</span>
 
@@ -2551,34 +2605,389 @@
             <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
         <span class="p">)</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_joint_ordering_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate buffers required while nonidentity joint ordering is active.&quot;&quot;&quot;</span>
+        <span class="n">required_fields</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;_joint_pos_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_vel_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_stiffness_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_damping_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_armature_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_friction_coeff_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_pos_limits_lower_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_pos_limits_upper_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_vel_limits_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_joint_effort_limits_user&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">missing_fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">required_fields</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing_fields</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;Newton nonidentity joint ordering requires initialized public-order buffers; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;missing </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing_fields</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_body_ordering_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Validate buffers required while nonidentity body ordering is active.&quot;&quot;&quot;</span>
+        <span class="n">required_fields</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="s2">&quot;_jacobian_body_user_to_backend&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_body_link_pose_w_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_body_com_vel_w_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_body_mass_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_body_inertia_user&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;_body_com_pos_b_user&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">missing_fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">required_fields</span> <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing_fields</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;Newton nonidentity body ordering requires initialized public-order buffers; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;missing </span><span class="si">{</span><span class="s1">&#39;, &#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">missing_fields</span><span class="p">)</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_configure_joint_ordering_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Allocate or release buffers owned only by nonidentity joint ordering.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span><span class="p">:</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="p">(</span>
+                <span class="s2">&quot;_joint_stiffness_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_damping_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_armature_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_friction_coeff_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_pos_limits_lower_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_pos_limits_upper_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_vel_limits_user&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;_joint_effort_limits_user&quot;</span><span class="p">,</span>
+            <span class="p">):</span>
+                <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_name</span><span class="p">,</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_validate_joint_ordering_buffers</span><span class="p">()</span>
+            <span class="c1"># Seed the Lab-owned actuator gain records from the solver&#39;s initial</span>
+            <span class="c1"># gains at ordering-resolve time, before actuator processing overwrites</span>
+            <span class="c1"># the actuator-covered DOFs. These records are Lab-owned afterwards</span>
+            <span class="c1"># (sim gains are deliberately zeroed for explicit DOFs), so they must</span>
+            <span class="c1"># never be resynced from the solver on rebind -- unlike the sim-owned</span>
+            <span class="c1"># mirrors in :meth:`_sync_user_ordered_joint_property_buffers`.</span>
+            <span class="k">for</span> <span class="n">backend_data</span><span class="p">,</span> <span class="n">user_data</span> <span class="ow">in</span> <span class="p">(</span>
+                <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_actuator_stiffness</span><span class="p">),</span>
+                <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_actuator_damping</span><span class="p">),</span>
+            <span class="p">):</span>
+                <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                    <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                    <span class="n">dim</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span>
+                    <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="n">backend_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                    <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="n">user_data</span><span class="p">],</span>
+                    <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">shape</span><span class="p">,</span>
+                <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_previous_joint_vel</span><span class="p">],</span>
+                <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_previous_joint_vel</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_actuator_stiffness</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_actuator_damping</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_timestamp</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+        <span class="n">reset_timestamps</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_acc</span><span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_configure_body_ordering_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Allocate or release buffers owned only by nonidentity body ordering.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span><span class="p">:</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">transformf</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">spatial_vectorf</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                    <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">,</span> <span class="mi">9</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span>
+                <span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">vec3f</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_validate_body_ordering_buffers</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">reset_timestamps</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_vel_w</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pose_b</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pose_w</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_acc_w</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_state_w</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_state_w</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_state_w</span><span class="p">,</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_make_jacobian_body_user_to_backend</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the Newton-layout user-to-backend row map for Jacobian body axes.</span>
+
+<span class="sd">        Newton&#39;s ``eval_jacobian`` keeps every link row in its output, including the</span>
+<span class="sd">        fixed-base root row at index 0, so this map indexes that full-row layout</span>
+<span class="sd">        directly with no shift. It therefore differs from the PhysX-style base</span>
+<span class="sd">        implementation ``BaseArticulationData._make_jacobian_body_user_to_backend``,</span>
+<span class="sd">        whose source omits the root row and shifts the remaining rows down by one.</span>
+<span class="sd">        Fixed-base articulations drop the root row here (Newton pins the root at</span>
+<span class="sd">        public index 0), so the map already encodes the link offset: the gather</span>
+<span class="sd">        kernel needs neither a runtime link offset nor a body-ordering branch. The</span>
+<span class="sd">        map is built even under identity ordering so the kernel can index it</span>
+<span class="sd">        unconditionally.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            One-dimensional ``wp.int32`` device array of backend Jacobian rows in</span>
+<span class="sd">            public body order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">body_ordering</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span>
+        <span class="n">body_user_to_backend</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend_indices</span> <span class="k">if</span> <span class="n">body_ordering</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_link_offset</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">backend_rows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">backend_id</span><span class="p">)</span> <span class="k">for</span> <span class="n">backend_id</span> <span class="ow">in</span> <span class="n">body_user_to_backend</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Fixed-base: drop the root row (backend id 0, pinned at public index 0); no shift.</span>
+            <span class="n">backend_rows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">backend_id</span><span class="p">)</span> <span class="k">for</span> <span class="n">backend_id</span> <span class="ow">in</span> <span class="n">body_user_to_backend</span> <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">backend_id</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">backend_rows</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_ordering_maps_after_resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Configure and re-pin public buffers after ordering maps are installed.</span>
+
+<span class="sd">        Ordering state lives only on :attr:`joint_ordering` / :attr:`body_ordering`;</span>
+<span class="sd">        a non-``None`` map denotes an active permutation. The staging</span>
+<span class="sd">        (re)allocation below reconciles from those maps read directly, so an</span>
+<span class="sd">        ordering that was cleared on rebind releases its buffers.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Always build the row map (even under identity ordering) so the gather kernel can</span>
+        <span class="c1"># index the body axis unconditionally -- the map owns the entire body-axis encoding.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_jacobian_body_user_to_backend</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_jacobian_body_user_to_backend</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_configure_joint_ordering_buffers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sync_user_ordered_joint_property_buffers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_configure_body_ordering_buffers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sync_user_ordered_body_property_buffers</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pin_proxy_arrays</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_refresh_user_order_joint_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reorder the live backend joint state into the user-order shadows.</span>
+
+<span class="sd">        Launches :func:`ordering_kernels.reorder_2d_backend_to_user` for</span>
+<span class="sd">        ``_sim_bind_joint_pos`` -&gt; ``_joint_pos_user`` and ``_sim_bind_joint_vel``</span>
+<span class="sd">        -&gt; ``_joint_vel_user``. No-op under identity ordering (the shadows are the</span>
+<span class="sd">        sim-bound arrays themselves).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">for</span> <span class="n">backend_data</span><span class="p">,</span> <span class="n">user_data</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span><span class="p">),</span>
+        <span class="p">):</span>
+            <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span>
+                <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="n">backend_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="n">user_data</span><span class="p">],</span>
+                <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_refresh_user_order_body_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Reorder the live backend body state into the user-order shadows.</span>
+
+<span class="sd">        Launches :func:`ordering_kernels.reorder_2d_backend_to_user` for</span>
+<span class="sd">        ``_sim_bind_body_link_pose_w`` -&gt; ``_body_link_pose_w_user`` and</span>
+<span class="sd">        ``_sim_bind_body_com_vel_w`` -&gt; ``_body_com_vel_w_user``. No-op under</span>
+<span class="sd">        identity ordering (the shadows are the sim-bound arrays themselves).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">for</span> <span class="n">backend_data</span><span class="p">,</span> <span class="n">user_data</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_link_pose_w</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span><span class="p">),</span>
+        <span class="p">):</span>
+            <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span>
+                <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="n">backend_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="n">user_data</span><span class="p">],</span>
+                <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_refresh_user_order_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Republish all Tier-1 user-order state shadows from live backend state.</span>
+
+<span class="sd">        Registered as a post-step callback (see</span>
+<span class="sd">        :meth:`isaaclab_newton.physics.NewtonManager.register_post_step_callback`)</span>
+<span class="sd">        so the reorder launches land inside the stepped/captured region right after</span>
+<span class="sd">        the last solver substep. With no Python freshness guard the launches are</span>
+<span class="sd">        recorded into every captured graph and replayed on each tick, so the</span>
+<span class="sd">        passthrough ``joint_pos`` / ``joint_vel`` / ``body_link_pose_w`` /</span>
+<span class="sd">        ``body_com_vel_w`` shadows behave exactly like sim-bound memory.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_refresh_user_order_joint_state</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_refresh_user_order_body_state</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_sync_user_ordered_joint_property_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Refresh user-order joint property buffers from sim-bound backend-order arrays.</span>
+
+<span class="sd">        Only sim-owned mirrors belong here: the solver is authoritative for these</span>
+<span class="sd">        arrays, so re-gathering them on init and rebind is always correct. This</span>
+<span class="sd">        includes the Tier-1 joint-state shadows (``_joint_pos_user`` /</span>
+<span class="sd">        ``_joint_vel_user``), which the solver owns; seeding them here at resolve</span>
+<span class="sd">        and rebind is what makes the first pre-step reads valid, since the</span>
+<span class="sd">        post-step publish in :meth:`_refresh_user_order_state` only runs inside a</span>
+<span class="sd">        sim step. The Lab-owned actuator gain records (``_actuator_stiffness`` /</span>
+<span class="sd">        ``_actuator_damping``) are deliberately excluded -- they are seeded once in</span>
+<span class="sd">        :meth:`_configure_joint_ordering_buffers` and would be clobbered here on</span>
+<span class="sd">        every rebind.</span>
+
+<span class="sd">        The required public-order buffers are allocated and validated by</span>
+<span class="sd">        :meth:`_configure_joint_ordering_buffers`, which always runs before this.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">for</span> <span class="n">backend_data</span><span class="p">,</span> <span class="n">user_data</span> <span class="ow">in</span> <span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_armature</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_friction_coeff</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel_limits_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_user</span><span class="p">),</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_effort_limits_sim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_user</span><span class="p">),</span>
+        <span class="p">):</span>
+            <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+                <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_joints</span><span class="p">),</span>
+                <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="n">backend_data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">joint_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+                <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="n">user_data</span><span class="p">],</span>
+                <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+            <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_sync_user_ordered_body_property_buffers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Refresh user-order body property buffers from sim-bound backend-order arrays.</span>
+
+<span class="sd">        Only sim-owned mirrors belong here; the solver is authoritative for all of</span>
+<span class="sd">        them. The Tier-1 body-state shadows (``_body_link_pose_w_user`` /</span>
+<span class="sd">        ``_body_com_vel_w_user``) are republished via</span>
+<span class="sd">        :meth:`_refresh_user_order_body_state`.</span>
+
+<span class="sd">        This sync also seeds the invariant the partial body-property setters rely</span>
+<span class="sd">        on: the user buffer must stay the public-order image of the sim-bound</span>
+<span class="sd">        backend buffer, since the setters scatter only the selected cells into</span>
+<span class="sd">        both. A divergent pair silently corrupts the unselected cells.</span>
+
+<span class="sd">        The required public-order buffers are allocated and validated by</span>
+<span class="sd">        :meth:`_configure_body_ordering_buffers`, which always runs before this.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_refresh_user_order_body_state</span><span class="p">()</span>
+        <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+            <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+            <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span>
+            <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_mass</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+            <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span><span class="p">],</span>
+            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+            <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_3d_backend_to_user</span><span class="p">,</span>
+            <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">,</span> <span class="mi">9</span><span class="p">),</span>
+            <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_inertia</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+            <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span><span class="p">],</span>
+            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">wp</span><span class="o">.</span><span class="n">launch</span><span class="p">(</span>
+            <span class="n">ordering_kernels</span><span class="o">.</span><span class="n">reorder_2d_backend_to_user</span><span class="p">,</span>
+            <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_num_instances</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_bodies</span><span class="p">),</span>
+            <span class="n">inputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">body_ordering</span><span class="o">.</span><span class="n">user_to_backend</span><span class="p">],</span>
+            <span class="n">outputs</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span><span class="p">],</span>
+            <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span>
+        <span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_pin_proxy_arrays</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Create or rebind all pinned ProxyArray wrappers.</span>
 
 <span class="sd">        Called from :meth:`_create_buffers` on first initialization and from</span>
 <span class="sd">        :meth:`_create_simulation_bindings` after a full simulation reset when</span>
-<span class="sd">        the solver recreates its internal arrays.</span>
+<span class="sd">        the solver recreates its internal arrays. The public-order buffers this</span>
+<span class="sd">        pins are allocated and validated by the ``_configure_*_ordering_buffers``</span>
+<span class="sd">        methods, which run at ordering-resolve time before any pin or rebind.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">is_rebind</span> <span class="o">=</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;_root_link_pose_w_ta&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">is_rebind</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sync_user_ordered_joint_property_buffers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">is_rebind</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sync_user_ordered_body_property_buffers</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">is_rebind</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_timestamp</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+
+        <span class="n">joint_stiffness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span>
+        <span class="n">joint_damping</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span>
+        <span class="n">joint_armature</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_armature</span>
+        <span class="n">joint_friction_coeff</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_friction_coeff</span>
+        <span class="p">)</span>
+        <span class="n">joint_pos_limits_lower</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span>
+        <span class="p">)</span>
+        <span class="n">joint_pos_limits_upper</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span>
+        <span class="p">)</span>
+        <span class="n">joint_vel_limits</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel_limits_sim</span>
+        <span class="p">)</span>
+        <span class="n">joint_effort_limits</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_effort_limits_sim</span>
+        <span class="p">)</span>
 
         <span class="k">if</span> <span class="n">is_rebind</span><span class="p">:</span>
             <span class="c1"># Rebind sim-bound ProxyArrays to new solver arrays</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_root_link_pose_w</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_root_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_root_com_vel_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_link_pose_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_armature</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_friction_coeff</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel_limits_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_effort_limits_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_mass</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_inertia</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">)</span>
+            <span class="n">body_link_pose_w</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_link_pose_w</span>
+            <span class="p">)</span>
+            <span class="n">body_com_vel_w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span>
+            <span class="n">joint_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span>
+            <span class="n">joint_vel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_link_pose_w</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_com_vel_w</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_vel</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_stiffness</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_damping</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_armature</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_friction_coeff</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos_limits_lower</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos_limits_upper</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_vel_limits</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_effort_limits</span><span class="p">)</span>
+            <span class="n">body_mass</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_mass</span>
+            <span class="n">body_inertia</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_inertia</span>
+            <span class="n">body_com_pos_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_mass</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_inertia</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_com_pos_b</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># First-time creation: pin ProxyArrays to current buffers</span>
             <span class="c1"># Category 1: sim-bound and pre-allocated buffers</span>
@@ -2586,10 +2995,16 @@
             <span class="c1"># calls rebind() on each ProxyArray to keep them in sync.</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_root_link_pose_w</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_root_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_root_com_vel_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_link_pose_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span><span class="p">)</span>
+            <span class="n">body_link_pose_w</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_link_pose_w</span>
+            <span class="p">)</span>
+            <span class="n">body_com_vel_w</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_vel_w</span>
+            <span class="n">joint_pos</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos</span>
+            <span class="n">joint_vel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_joint_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_link_pose_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_link_pose_w</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_vel_w_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_com_vel_w</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_vel</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_default_root_pose_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_default_root_pose</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_default_root_vel_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_default_root_vel</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_default_joint_pos_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_default_joint_pos</span><span class="p">)</span>
@@ -2599,20 +3014,23 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_target_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_target</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_computed_torque_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_computed_torque</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_applied_torque_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_applied_torque</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_stiffness_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_damping_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_armature</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_friction_coeff</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_lower</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_pos_limits_upper</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_vel_limits_sim</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_joint_effort_limits_sim</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_stiffness_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_stiffness</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_damping_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_damping</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_armature_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_armature</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_friction_coeff_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_friction_coeff</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_lower_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos_limits_lower</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_upper_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_pos_limits_upper</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_vel_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_vel_limits</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_joint_effort_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">joint_effort_limits</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_soft_joint_pos_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_soft_joint_pos_limits</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_soft_joint_vel_limits_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_soft_joint_vel_limits</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_gear_ratio_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_gear_ratio</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_mass</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_inertia</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span><span class="p">)</span>
+            <span class="n">body_mass</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_mass</span>
+            <span class="n">body_inertia</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_inertia</span>
+            <span class="n">body_com_pos_b</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_user</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">has_body_ordering</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_body_com_pos_b</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_mass_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_mass</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_inertia_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_inertia</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_pos_b_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="n">body_com_pos_b</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fixed_tendon_stiffness_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_fixed_tendon_stiffness</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fixed_tendon_damping_ta</span> <span class="o">=</span> <span class="n">ProxyArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_sim_bind_fixed_tendon_damping</span><span class="p">)</span>
 
@@ -2684,6 +3102,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_body_com_quat_b</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_ta</span><span class="p">:</span> <span class="n">ProxyArray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_joint_pos_limits_timestamp</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_lin_vel_b_ta</span><span class="p">:</span> <span class="n">ProxyArray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_lin_vel_b</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_root_link_ang_vel_b_ta</span><span class="p">:</span> <span class="n">ProxyArray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -3177,7 +3596,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

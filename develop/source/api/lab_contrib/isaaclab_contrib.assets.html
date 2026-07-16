@@ -66,7 +66,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -1016,6 +1016,8 @@
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.fixed_tendon_stiffness"><code class="docutils literal notranslate"><span class="pre">MultirotorData.fixed_tendon_stiffness</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.gear_ratio"><code class="docutils literal notranslate"><span class="pre">MultirotorData.gear_ratio</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.gravity_compensation_forces"><code class="docutils literal notranslate"><span class="pre">MultirotorData.gravity_compensation_forces</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.has_body_ordering"><code class="docutils literal notranslate"><span class="pre">MultirotorData.has_body_ordering</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.has_joint_ordering"><code class="docutils literal notranslate"><span class="pre">MultirotorData.has_joint_ordering</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.heading_w"><code class="docutils literal notranslate"><span class="pre">MultirotorData.heading_w</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.is_primed"><code class="docutils literal notranslate"><span class="pre">MultirotorData.is_primed</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.joint_acc"><code class="docutils literal notranslate"><span class="pre">MultirotorData.joint_acc</span></code></a></li>
@@ -5256,6 +5258,12 @@ is the total number of thrusters per multirotor.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.gravity_compensation_forces" title="isaaclab_contrib.assets.MultirotorData.gravity_compensation_forces"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gravity_compensation_forces</span></code></a></p></td>
 <td><p>See <a class="reference internal" href="../lab/isaaclab.assets.html#isaaclab.assets.BaseArticulationData.gravity_compensation_forces" title="isaaclab.assets.BaseArticulationData.gravity_compensation_forces"><code class="xref py py-attr docutils literal notranslate"><span class="pre">isaaclab.assets.BaseArticulationData.gravity_compensation_forces</span></code></a>.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.has_body_ordering" title="isaaclab_contrib.assets.MultirotorData.has_body_ordering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_body_ordering</span></code></a></p></td>
+<td><p>Whether a nonidentity body ordering is active.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.has_joint_ordering" title="isaaclab_contrib.assets.MultirotorData.has_joint_ordering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_joint_ordering</span></code></a></p></td>
+<td><p>Whether a nonidentity joint ordering is active.</p></td>
+</tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.heading_w" title="isaaclab_contrib.assets.MultirotorData.heading_w"><code class="xref py py-obj docutils literal notranslate"><span class="pre">heading_w</span></code></a></p></td>
 <td><p>Yaw heading of the base frame (in radians).</p></td>
 </tr>
@@ -6084,6 +6092,22 @@ the <code class="docutils literal notranslate"><span class="pre">ProxyArray</spa
 <p>Unlike the world-frame pose buffers, this does not need an explicit
 <code class="xref py py-meth docutils literal notranslate"><span class="pre">_ensure_fk_fresh()</span></code>: PhysX recomputes these forces from the current joint
 state on query, so a fresh <code class="docutils literal notranslate"><span class="pre">write_*_to_sim_*</span></code> is already reflected here.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="isaaclab_contrib.assets.MultirotorData.has_body_ordering">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_body_ordering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><a class="headerlink" href="#isaaclab_contrib.assets.MultirotorData.has_body_ordering" title="Link to this definition">#</a></dt>
+<dd><p>Whether a nonidentity body ordering is active.</p>
+<p>Derived from <a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.body_ordering" title="isaaclab_contrib.assets.MultirotorData.body_ordering"><code class="xref py py-attr docutils literal notranslate"><span class="pre">body_ordering</span></code></a>; a non-<code class="docutils literal notranslate"><span class="pre">None</span></code> map always denotes an
+actual permutation between backend and public body order.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="isaaclab_contrib.assets.MultirotorData.has_joint_ordering">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_joint_ordering</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><a class="headerlink" href="#isaaclab_contrib.assets.MultirotorData.has_joint_ordering" title="Link to this definition">#</a></dt>
+<dd><p>Whether a nonidentity joint ordering is active.</p>
+<p>Derived from <a class="reference internal" href="#isaaclab_contrib.assets.MultirotorData.joint_ordering" title="isaaclab_contrib.assets.MultirotorData.joint_ordering"><code class="xref py py-attr docutils literal notranslate"><span class="pre">joint_ordering</span></code></a>; a non-<code class="docutils literal notranslate"><span class="pre">None</span></code> map always denotes an
+actual permutation between backend and public joint order.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -6923,6 +6947,8 @@ physics simulation.</p>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.fixed_tendon_stiffness"><code class="docutils literal notranslate"><span class="pre">MultirotorData.fixed_tendon_stiffness</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.gear_ratio"><code class="docutils literal notranslate"><span class="pre">MultirotorData.gear_ratio</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.gravity_compensation_forces"><code class="docutils literal notranslate"><span class="pre">MultirotorData.gravity_compensation_forces</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.has_body_ordering"><code class="docutils literal notranslate"><span class="pre">MultirotorData.has_body_ordering</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.has_joint_ordering"><code class="docutils literal notranslate"><span class="pre">MultirotorData.has_joint_ordering</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.heading_w"><code class="docutils literal notranslate"><span class="pre">MultirotorData.heading_w</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.is_primed"><code class="docutils literal notranslate"><span class="pre">MultirotorData.is_primed</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab_contrib.assets.MultirotorData.joint_acc"><code class="docutils literal notranslate"><span class="pre">MultirotorData.joint_acc</span></code></a></li>
@@ -7022,7 +7048,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

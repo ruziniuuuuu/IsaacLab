@@ -66,7 +66,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -840,6 +840,7 @@
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.reset"><code class="docutils literal notranslate"><span class="pre">ContactSensor.reset()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.resolve_class"><code class="docutils literal notranslate"><span class="pre">ContactSensor.resolve_class()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.set_debug_vis"><code class="docutils literal notranslate"><span class="pre">ContactSensor.set_debug_vis()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.update"><code class="docutils literal notranslate"><span class="pre">ContactSensor.update()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.cfg"><code class="docutils literal notranslate"><span class="pre">ContactSensor.cfg</span></code></a></li>
 </ul>
 </li>
@@ -2421,6 +2422,9 @@ cfg through to a renderer that knows what to do with it.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#isaaclab.sensors.ContactSensor.set_debug_vis" title="isaaclab.sensors.ContactSensor.set_debug_vis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_debug_vis</span></code></a>(debug_vis)</p></td>
 <td><p>Sets whether to visualize the sensor data.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#isaaclab.sensors.ContactSensor.update" title="isaaclab.sensors.ContactSensor.update"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update</span></code></a>(dt[, force_recompute])</p></td>
+<td><p>Advance the sensor timestamp and update history-bearing buffers.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -2633,6 +2637,21 @@ behavior (e.g. capability classmethods) before a sim/instance exists.</p>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Whether the debug visualization was successfully set. False if the sensor
 does not support debug visualization.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="isaaclab.sensors.ContactSensor.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_recompute</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#isaaclab.sensors.ContactSensor.update" title="Link to this definition">#</a></dt>
+<dd><p>Advance the sensor timestamp and update history-bearing buffers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><span class="target" id="isaaclab.sensors.ContactSensor.update.params.dt"></span><strong>dt</strong><a class="paramlink headerlink reference internal" href="#isaaclab.sensors.ContactSensor.update.params.dt">¶</a> – Time elapsed since the previous sensor update [s].</p></li>
+<li><p><span class="target" id="isaaclab.sensors.ContactSensor.update.params.force_recompute"></span><strong>force_recompute</strong><a class="paramlink headerlink reference internal" href="#isaaclab.sensors.ContactSensor.update.params.force_recompute">¶</a> – Whether to recompute the sensor buffers regardless of their
+configured update period. Defaults to False.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -2977,6 +2996,9 @@ if <a class="reference internal" href="#isaaclab.sensors.ContactSensorCfg.track_
 <span class="sig-name descname"><span class="pre">history_length</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#isaaclab.sensors.ContactSensorCfg.history_length" title="Link to this definition">#</a></dt>
 <dd><p>Number of past frames to store in the sensor buffers. Defaults to 0, which means that only
 the current data is stored (no history).</p>
+<p>A positive value updates the sensor buffers at <a class="reference internal" href="#isaaclab.sensors.ContactSensorCfg.update_period" title="isaaclab.sensors.ContactSensorCfg.update_period"><code class="xref py py-attr docutils literal notranslate"><span class="pre">update_period</span></code></a> during scene updates,
+including when the scene uses lazy sensor updates. This preserves physics-step contact history
+until it is read at a later environment step.</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -6732,6 +6754,7 @@ their native solver outputs to this convention.</p></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.reset"><code class="docutils literal notranslate"><span class="pre">ContactSensor.reset()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.resolve_class"><code class="docutils literal notranslate"><span class="pre">ContactSensor.resolve_class()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.set_debug_vis"><code class="docutils literal notranslate"><span class="pre">ContactSensor.set_debug_vis()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.update"><code class="docutils literal notranslate"><span class="pre">ContactSensor.update()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#isaaclab.sensors.ContactSensor.cfg"><code class="docutils literal notranslate"><span class="pre">ContactSensor.cfg</span></code></a></li>
 </ul>
 </li>
@@ -7167,7 +7190,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>

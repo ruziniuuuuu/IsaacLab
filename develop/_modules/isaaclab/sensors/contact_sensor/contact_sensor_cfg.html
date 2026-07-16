@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 15, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
   </head>
   
   
@@ -745,7 +745,12 @@
 
     <span class="n">history_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Number of past frames to store in the sensor buffers. Defaults to 0, which means that only</span>
-<span class="sd">    the current data is stored (no history).&quot;&quot;&quot;</span>
+<span class="sd">    the current data is stored (no history).</span>
+
+<span class="sd">    A positive value updates the sensor buffers at :attr:`update_period` during scene updates,</span>
+<span class="sd">    including when the scene uses lazy sensor updates. This preserves physics-step contact history</span>
+<span class="sd">    until it is read at a later environment step.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">filter_prim_paths_expr</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;List of body prim path expressions to filter contacts against. Defaults to empty,</span>
@@ -823,7 +828,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 15, 2026.
+  Last updated on Jul 16, 2026.
   <br/>
 </p>
   </div>
