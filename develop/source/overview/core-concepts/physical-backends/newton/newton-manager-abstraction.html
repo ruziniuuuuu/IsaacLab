@@ -64,7 +64,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -478,6 +478,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -948,8 +949,11 @@ gripper can carry the object without requiring an obviously unphysical
 friction value. Use
 <code class="xref py py-attr docutils literal notranslate"><span class="pre">soft_contact_kd</span></code> for
 stabilization if contacts chatter.</p></li>
-<li><p>Tune the <code class="docutils literal notranslate"><span class="pre">soft_contact_*</span></code> values together with <code class="docutils literal notranslate"><span class="pre">shape_material_*</span></code> values
-because rigid shape material parameters also affect the effective contact.</p></li>
+<li><p>Tune the <code class="docutils literal notranslate"><span class="pre">soft_contact_*</span></code> values together with the rigid shape contact
+material, because the shape’s <code class="docutils literal notranslate"><span class="pre">ke</span></code>/<code class="docutils literal notranslate"><span class="pre">kd</span></code>/<code class="docutils literal notranslate"><span class="pre">mu</span></code> also affect the effective
+contact. Set shape defaults via
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.NewtonShapeCfg" title="isaaclab_newton.physics.NewtonShapeCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonShapeCfg</span></code></a> on <code class="docutils literal notranslate"><span class="pre">NewtonCfg.default_shape_cfg</span></code>,
+or override per asset through the asset’s Newton contact material.</p></li>
 <li><p>If <code class="docutils literal notranslate"><span class="pre">soft_contact_ke</span></code> is not sufficient, or <code class="docutils literal notranslate"><span class="pre">soft_contact_mu</span></code> must be
 unphysically high, tune the Franka arm and hand actuator stiffness and maximum
 effort. For the gripper command, fully close the fingers and let the actuator
@@ -1068,7 +1072,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

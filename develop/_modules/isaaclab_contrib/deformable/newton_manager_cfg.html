@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -477,6 +477,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -688,7 +689,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Literal</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab_newton.physics</span><span class="w"> </span><span class="kn">import</span> <span class="n">FeatherstoneSolverCfg</span><span class="p">,</span> <span class="n">MJWarpSolverCfg</span><span class="p">,</span> <span class="n">NewtonSolverCfg</span>
 
@@ -698,21 +699,65 @@
     <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab_newton.physics</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewtonManager</span>
 
 
+<div class="viewcode-block" id="NewtonModelCfg">
+<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.NewtonModelCfg">[docs]</a>
+<span class="nd">@configclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NewtonModelCfg</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Global Newton model parameters applied after builder finalization.</span>
+
+<span class="sd">    These control model-level contact behavior shared across all objects.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">soft_contact_ke</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0e3</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle and particle self-contact stiffness [N/m].</span>
+
+<span class="sd">    Effective per-contact stiffness is the average of this value and the rigid</span>
+<span class="sd">    shape&#39;s material stiffness.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">soft_contact_kd</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0e-2</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle contact damping [N*s/m].&quot;&quot;&quot;</span>
+
+    <span class="n">soft_contact_mu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle contact friction coefficient [dimensionless].</span>
+
+<span class="sd">    Effective per-contact friction is ``sqrt(soft_contact_mu * shape_mu)``, where</span>
+<span class="sd">    ``shape_mu`` is the rigid shape&#39;s own friction coefficient (from its per-asset</span>
+<span class="sd">    material or :attr:`~isaaclab_newton.physics.NewtonShapeCfg.mu` default), not</span>
+<span class="sd">    set by this config.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="NewtonModelSolverCfg">
+<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.NewtonModelSolverCfg">[docs]</a>
+<span class="nd">@configclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NewtonModelSolverCfg</span><span class="p">(</span><span class="n">NewtonSolverCfg</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base for solver configs whose manager applies :class:`NewtonModelCfg` to the finalized model.</span>
+
+<span class="sd">    TODO: Temporary. This base only exists because :class:`NewtonModelCfg` lives in</span>
+<span class="sd">    ``isaaclab_contrib`` while :class:`NewtonSolverCfg` is in ``isaaclab_newton`` core.</span>
+<span class="sd">    Once these model params move into core, ``model_cfg`` should live on</span>
+<span class="sd">    :class:`NewtonSolverCfg` (or ``NewtonCfg``) directly and this class can be removed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_cfg</span><span class="p">:</span> <span class="n">NewtonModelCfg</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Global Newton model parameters applied after builder finalization.&quot;&quot;&quot;</span></div>
+
+
+
 <div class="viewcode-block" id="VBDSolverCfg">
 <a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.VBDSolverCfg">[docs]</a>
 <span class="nd">@configclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">VBDSolverCfg</span><span class="p">(</span><span class="n">NewtonSolverCfg</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">VBDSolverCfg</span><span class="p">(</span><span class="n">NewtonModelSolverCfg</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for the Vertex Block Descent (VBD) solver.</span>
 
-<span class="sd">    Supports particle simulation (cloth, soft bodies) and coupled rigid-body systems.</span>
-<span class="sd">    Requires ``ModelBuilder.color()`` to be called before ``finalize()`` to build</span>
-<span class="sd">    the parallel vertex colouring needed by the solver.</span>
+<span class="sd">    Supports cloth, soft bodies, and coupled rigid-body systems. Requires</span>
+<span class="sd">    ``ModelBuilder.color()`` before ``finalize()`` to build the vertex coloring.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">class_type</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">NewtonManager</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{DIR}</span><span class="s2">.vbd_manager:NewtonVBDManager&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Manager class for the VBD solver.&quot;&quot;&quot;</span>
-
-    <span class="n">solver_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;vbd&quot;</span>
 
     <span class="n">iterations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Number of VBD iterations per substep.&quot;&quot;&quot;</span>
@@ -720,8 +765,8 @@
     <span class="n">integrate_with_external_rigid_solver</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether rigid bodies are integrated by an external solver (one-way coupling).</span>
 
-<span class="sd">    Set to ``True`` when coupling cloth with a separate rigid-body solver</span>
-<span class="sd">    (e.g. ``SolverFeatherstone``) so that VBD only integrates the cloth particles.</span>
+<span class="sd">    Set to ``True`` when coupling cloth with a separate rigid-body solver so VBD</span>
+<span class="sd">    only integrates the cloth particles.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">particle_enable_self_contact</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
@@ -734,12 +779,10 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Self-contact detection margin [m]. Should be &gt;= particle_self_contact_radius.&quot;&quot;&quot;</span>
 
     <span class="n">particle_collision_detection_interval</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Controls how frequently particle self-contact detection is applied.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How often particle self-contact detection is applied.</span>
 
-<span class="sd">    If set to a value &lt; 0, collision detection is only performed once before the</span>
-<span class="sd">    initialization step. If set to 0, collision detection is applied twice: once</span>
-<span class="sd">    before and once immediately after initialization. If set to a value ``k`` &gt;= 1,</span>
-<span class="sd">    collision detection is applied before every ``k`` VBD iterations.</span>
+<span class="sd">    ``&lt; 0``: once before initialization. ``0``: once before and once after</span>
+<span class="sd">    initialization. ``k &gt;= 1``: before every ``k`` VBD iterations.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">particle_vertex_contact_buffer_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">32</span>
@@ -751,59 +794,44 @@
     <span class="n">particle_topological_contact_filter_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Maximum topological distance (in rings) below which self-contacts are discarded.</span>
 
-<span class="sd">    Only used when ``particle_enable_self_contact`` is ``True``.</span>
-<span class="sd">    Increase to suppress contacts between closely connected mesh elements.</span>
-<span class="sd">    Values &gt; 3 significantly increase computation time.</span>
+<span class="sd">    Only used when ``particle_enable_self_contact`` is ``True``. Values &gt; 3</span>
+<span class="sd">    significantly increase computation time.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">particle_rest_shape_contact_exclusion_radius</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;World-space distance threshold for filtering topologically close primitives [m].</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rest-configuration separation threshold for filtering close primitives [m].</span>
 
-<span class="sd">    Candidate self-contacts whose rest-configuration separation is shorter than</span>
-<span class="sd">    this value are ignored. Only used when ``particle_enable_self_contact`` is ``True``.</span>
+<span class="sd">    Only used when ``particle_enable_self_contact`` is ``True``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">rigid_contact_k_start</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0e2</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initial stiffness seed for all rigid body contacts (body-body and body-particle) [N/m].</span>
-
-<span class="sd">    Used by the AVBD rigid contact solver. Increase to make rigid contacts stiffer.</span>
-<span class="sd">    &quot;&quot;&quot;</span></div>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initial stiffness seed for all rigid body contacts [N/m].&quot;&quot;&quot;</span></div>
 
 
 
 <div class="viewcode-block" id="CoupledMJWarpVBDSolverCfg">
 <a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.CoupledMJWarpVBDSolverCfg">[docs]</a>
 <span class="nd">@configclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">CoupledMJWarpVBDSolverCfg</span><span class="p">(</span><span class="n">NewtonSolverCfg</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for the coupled rigid-body MJWarp + VBD solver.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CoupledMJWarpVBDSolverCfg</span><span class="p">(</span><span class="n">NewtonModelSolverCfg</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for the coupled MJWarp + VBD solver.</span>
 
-<span class="sd">    Alternates a rigid-body solver (:class:`MJWarpSolverCfg`) and a soft-body solver (:class:`SolverVBD`) per</span>
-<span class="sd">    substep. The coupling direction is controlled by :attr:`coupling_mode`:</span>
-
-<span class="sd">    - ``&quot;one_way&quot;`` (default): Rigid solver advances first, then VBD reads</span>
-<span class="sd">      the updated body poses. The rigid solver does not feel particle contacts.</span>
-<span class="sd">    - ``&quot;two_way&quot;``: Same-substep two-way coupling with normal + Coulomb</span>
-<span class="sd">      friction. Contact detection runs first, reaction forces are injected</span>
-<span class="sd">      into ``body_f``, then the rigid solver reads ``body_f`` and feels</span>
-<span class="sd">      resistance from the deformable object. The friction reaction lets</span>
-<span class="sd">      actuators carry the object against gravity during a lift.</span>
+<span class="sd">    Alternates a rigid-body solver (:class:`MJWarpSolverCfg`) and VBD per substep.</span>
+<span class="sd">    The coupling direction is controlled by :attr:`coupling_mode`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">class_type</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">NewtonManager</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{DIR}</span><span class="s2">.coupled_mjwarp_vbd_manager:NewtonCoupledMJWarpVBDManager&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manager class for the VBD solver.&quot;&quot;&quot;</span>
-
-    <span class="n">solver_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;coupledmjwarpvbd&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manager class for the coupled MJWarp + VBD solver.&quot;&quot;&quot;</span>
 
     <span class="n">rigid_solver_cfg</span><span class="p">:</span> <span class="n">MJWarpSolverCfg</span> <span class="o">=</span> <span class="n">MJWarpSolverCfg</span><span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rigid-body sub-solver configuration for :class:`MJWarpSolverCfg`.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rigid-body sub-solver configuration.&quot;&quot;&quot;</span>
 
     <span class="n">soft_solver_cfg</span><span class="p">:</span> <span class="n">VBDSolverCfg</span> <span class="o">=</span> <span class="n">VBDSolverCfg</span><span class="p">(</span><span class="n">integrate_with_external_rigid_solver</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;VBD sub-solver configuration for cloth/particle dynamics.&quot;&quot;&quot;</span>
 
-    <span class="n">coupling_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;two_way&quot;</span>
+    <span class="n">coupling_mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;one_way&quot;</span><span class="p">,</span> <span class="s2">&quot;two_way&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;two_way&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Coupling direction between the rigid and VBD solvers.</span>
 
-<span class="sd">    - ``&quot;one_way&quot;``: Rigid -&gt; soft only (default, existing behavior).</span>
+<span class="sd">    - ``&quot;one_way&quot;``: Rigid -&gt; soft only.</span>
 <span class="sd">    - ``&quot;two_way&quot;``: Same-substep two-way coupling with normal + Coulomb friction.</span>
 <span class="sd">    &quot;&quot;&quot;</span></div>
 
@@ -812,94 +840,27 @@
 <div class="viewcode-block" id="CoupledFeatherstoneVBDSolverCfg">
 <a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.CoupledFeatherstoneVBDSolverCfg">[docs]</a>
 <span class="nd">@configclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">CoupledFeatherstoneVBDSolverCfg</span><span class="p">(</span><span class="n">NewtonSolverCfg</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for the coupled rigid-body Featherstone + VBD solver.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CoupledFeatherstoneVBDSolverCfg</span><span class="p">(</span><span class="n">NewtonModelSolverCfg</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for the coupled Featherstone + VBD solver.</span>
 
-<span class="sd">    Alternates a rigid-body solver (:class:`FeatherstoneSolverCfg`) and a soft-body solver (:class:`SolverVBD`) per</span>
-<span class="sd">    substep. The coupling direction is controlled by :attr:`coupling_mode`:</span>
-
-<span class="sd">    - ``&quot;kinematic&quot;`` (default): Rigid -&gt; soft only. Rigid bodies are kinematically updated by the rigid solver,</span>
-<span class="sd">      then VBD reads the updated body poses and reacts to them. The rigid solver does not feel particle contacts.</span>
-<span class="sd">    - ``&quot;one_way&quot;``: Rigid solver advances first, then VBD reads</span>
-<span class="sd">      the updated body poses. The rigid solver does not feel particle contacts.</span>
-<span class="sd">    - ``&quot;two_way&quot;``: Same-substep two-way coupling with normal + Coulomb</span>
-<span class="sd">      friction. Contact detection runs first, reaction forces are injected</span>
-<span class="sd">      into ``body_f``, then the rigid solver reads ``body_f`` and feels</span>
-<span class="sd">      resistance from the deformable object. The friction reaction lets</span>
-<span class="sd">      actuators carry the object against gravity during a lift.</span>
+<span class="sd">    Alternates a rigid-body solver (:class:`FeatherstoneSolverCfg`) and VBD per</span>
+<span class="sd">    substep. The coupling direction is controlled by :attr:`coupling_mode`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">class_type</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">NewtonManager</span><span class="p">]</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{DIR}</span><span class="s2">.coupled_featherstone_vbd_manager:NewtonCoupledFeatherstoneVBDManager&quot;</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manager class for the VBD solver.&quot;&quot;&quot;</span>
-
-    <span class="n">solver_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;coupledfeatherstonevbd&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Manager class for the coupled Featherstone + VBD solver.&quot;&quot;&quot;</span>
 
     <span class="n">rigid_solver_cfg</span><span class="p">:</span> <span class="n">FeatherstoneSolverCfg</span> <span class="o">=</span> <span class="n">FeatherstoneSolverCfg</span><span class="p">()</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rigid-body sub-solver configuration for :class:`FeatherstoneSolverCfg`.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rigid-body sub-solver configuration.&quot;&quot;&quot;</span>
 
     <span class="n">soft_solver_cfg</span><span class="p">:</span> <span class="n">VBDSolverCfg</span> <span class="o">=</span> <span class="n">VBDSolverCfg</span><span class="p">(</span><span class="n">integrate_with_external_rigid_solver</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;VBD sub-solver configuration for cloth/particle dynamics.&quot;&quot;&quot;</span>
 
-    <span class="n">coupling_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;kinematic&quot;</span>
+    <span class="n">coupling_mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;one_way&quot;</span><span class="p">,</span> <span class="s2">&quot;two_way&quot;</span><span class="p">,</span> <span class="s2">&quot;kinematic&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;kinematic&quot;</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Coupling direction between the rigid and VBD solvers.</span>
 
-<span class="sd">    - ``&quot;kinematic&quot;``: Rigid -&gt; soft only (default)</span>
-<span class="sd">    - ``&quot;one_way&quot;``: Rigid -&gt; soft only (existing behavior).</span>
-<span class="sd">    - ``&quot;two_way&quot;``: Same-substep two-way coupling with normal + Coulomb friction.</span>
-<span class="sd">    &quot;&quot;&quot;</span></div>
-
-
-
-<div class="viewcode-block" id="NewtonModelCfg">
-<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.newton_manager_cfg.NewtonModelCfg">[docs]</a>
-<span class="nd">@configclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">NewtonModelCfg</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Global Newton model parameters.</span>
-
-<span class="sd">    These parameters are applied to the ``newton.Model`` after finalization.</span>
-<span class="sd">    They control model-level contact behavior shared across all objects.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">soft_contact_ke</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0e3</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle contact stiffness [N/m].</span>
-
-<span class="sd">    Controls the stiffness of the penalty force of contacts between cloth/soft-body particles</span>
-<span class="sd">    and rigid body shapes, and self-contacts of cloth/soft-body particles. The effective stiffness per contact is the</span>
-<span class="sd">    average of this value and the rigid shape&#39;s material stiffness.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">soft_contact_kd</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0e-2</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle contact damping [N*s/m].&quot;&quot;&quot;</span>
-
-    <span class="n">soft_contact_mu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Body-particle contact friction coefficient.</span>
-
-<span class="sd">    The effective friction per contact is ``sqrt(soft_contact_mu * shape_material_mu)``.</span>
-<span class="sd">    Increase for better grip (e.g. gripper picking up cloth).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">shape_material_ke</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-shape contact stiffness override [N/m].</span>
-
-<span class="sd">    When set, all collision shapes in the model will have their contact</span>
-<span class="sd">    stiffness overwritten to this value.  If ``None`` (default), the</span>
-<span class="sd">    per-shape values parsed from USD/MJCF are kept.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">shape_material_kd</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-shape contact damping override [N*s/m].</span>
-
-<span class="sd">    When set, all collision shapes in the model will have their contact</span>
-<span class="sd">    damping overwritten to this value.  If ``None`` (default), the</span>
-<span class="sd">    per-shape values parsed from USD/MJCF are kept.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">shape_material_mu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-shape friction coefficient override [dimensionless].</span>
-
-<span class="sd">    When set, all collision shapes in the model will have their friction</span>
-<span class="sd">    coefficient overwritten to this value.  If ``None`` (default), the</span>
-<span class="sd">    per-shape values parsed from USD/MJCF are kept.</span>
+<span class="sd">    Accepts the same values as :attr:`CoupledMJWarpVBDSolverCfg.coupling_mode`,</span>
+<span class="sd">    plus ``&quot;kinematic&quot;`` (rigid -&gt; soft only, rigid bodies kinematically updated).</span>
 <span class="sd">    &quot;&quot;&quot;</span></div>
 
 </pre></div>
@@ -949,7 +910,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

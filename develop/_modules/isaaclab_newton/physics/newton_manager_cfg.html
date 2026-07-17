@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -477,6 +477,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -743,11 +744,11 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">NewtonShapeCfg</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape collision properties applied to all shapes in a Newton scene.</span>
 
-<span class="sd">    Mirrors Newton&#39;s :attr:`ModelBuilder.default_shape_cfg`. Only fields Isaac</span>
-<span class="sd">    Lab actually overrides are declared here; unspecified fields keep Newton&#39;s</span>
-<span class="sd">    upstream default. The struct is forwarded onto Newton&#39;s upstream</span>
-<span class="sd">    ``ShapeConfig`` via :func:`~isaaclab.utils.checked_apply` at builder</span>
-<span class="sd">    construction.</span>
+<span class="sd">    Mirrors Newton&#39;s :attr:`ModelBuilder.default_shape_cfg`. Fields that Isaac</span>
+<span class="sd">    Lab overrides or exposes for user overrides are declared here; fields not</span>
+<span class="sd">    represented keep Newton&#39;s upstream defaults. The struct is forwarded onto</span>
+<span class="sd">    Newton&#39;s upstream ``ShapeConfig`` via</span>
+<span class="sd">    :func:`~isaaclab.utils.checked_apply` at builder construction.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">margin</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
@@ -759,7 +760,29 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">gap</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape contact gap [m]. Newton&#39;s upstream default is ``None``.&quot;&quot;&quot;</span></div>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape contact gap [m]. Newton&#39;s upstream default is ``None``.&quot;&quot;&quot;</span>
+
+    <span class="c1"># Defaults mirror Newton&#39;s ShapeConfig defaults so an unspecified field is a no-op.</span>
+    <span class="n">ke</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.5e3</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape normal contact stiffness [N/m].</span>
+
+<span class="sd">    Applied to shapes that lack an explicit material; per-asset materials</span>
+<span class="sd">    override it. Mirrors Newton&#39;s ``ShapeConfig.ke`` default.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">kd</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">100.0</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape normal contact damping [N*s/m].</span>
+
+<span class="sd">    Applied to shapes that lack an explicit material; per-asset materials</span>
+<span class="sd">    override it. Mirrors Newton&#39;s ``ShapeConfig.kd`` default.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">mu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Default per-shape friction coefficient [dimensionless].</span>
+
+<span class="sd">    Applied to shapes that lack an explicit material; per-asset materials</span>
+<span class="sd">    override it. Mirrors Newton&#39;s ``ShapeConfig.mu`` default.</span>
+<span class="sd">    &quot;&quot;&quot;</span></div>
 
 
 
@@ -943,7 +966,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

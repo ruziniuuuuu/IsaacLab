@@ -64,7 +64,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -478,6 +478,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../../api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -751,6 +752,7 @@
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#coupled-solver-parameters">Coupled Solver Parameters</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#proxy-coupled-mjwarp-vbd">Proxy-Coupled MJWarp + VBD</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contact-and-material-parameters">Contact and Material Parameters</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#contact-model">Contact Model</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#volume-deformable-materials">Volume Deformable Materials</a></li>
@@ -784,10 +786,20 @@ before it works well with VBD.</p>
 <p>VBD is usually exposed through a task-specific physics preset rather than a
 general <code class="docutils literal notranslate"><span class="pre">newton_vbd</span></code> preset. Deformable-only scenes can use
 <code class="xref py py-class docutils literal notranslate"><span class="pre">VBDSolverCfg</span></code> directly. Robot or
-rigid-body scenes usually use
-<code class="xref py py-class docutils literal notranslate"><span class="pre">CoupledMJWarpVBDSolverCfg</span></code> or
-<code class="xref py py-class docutils literal notranslate"><span class="pre">CoupledFeatherstoneVBDSolverCfg</span></code> so one
-solver advances rigid bodies and VBD advances deformable particles.</p>
+rigid-body scenes usually use one of the coupled configs so one solver advances
+rigid bodies and VBD advances deformable particles:</p>
+<ul class="simple">
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">CoupledMJWarpVBDSolverCfg</span></code> — alternates
+the rigid (MJWarp) and VBD substeps. Use it when the same robot should both
+contact and feel the deformable.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">CouplerProxyCfg</span></code> —
+partitions the model among named entries and exposes selected bodies from one
+entry as <em>proxies</em> in another entry’s view via lagged impulses (see
+<a class="reference internal" href="#newton-vbd-proxy-coupling"><span class="std std-ref">Proxy-Coupled MJWarp + VBD</span></a> below). Use it when only a few rigid bodies
+(e.g. a gripper) need to interact with the deformable.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">CoupledFeatherstoneVBDSolverCfg</span></code> —
+alternates Featherstone and VBD; supports kinematic one-way coupling.</p></li>
+</ul>
 <section id="start-from-a-supported-deformable-task">
 <h2>Start from a Supported Deformable Task<a class="headerlink" href="#start-from-a-supported-deformable-task" title="Link to this heading">#</a></h2>
 <p>Before adding VBD to a new task, first run one of the experimental Franka
@@ -809,51 +821,54 @@ tuning.</p>
 <h2>Add a VBD Physics Preset<a class="headerlink" href="#add-a-vbd-physics-preset" title="Link to this heading">#</a></h2>
 <p>Tasks that support multiple physics options usually store <code class="docutils literal notranslate"><span class="pre">SimulationCfg.physics</span></code>
 as a <a class="reference internal" href="../../../../api/lab_tasks/isaaclab_tasks.utils.html#isaaclab_tasks.utils.PresetCfg" title="isaaclab_tasks.utils.hydra.PresetCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">PresetCfg</span></code></a>. For deformable Newton tasks,
-the preset can use a small <a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.NewtonCfg" title="isaaclab_newton.physics.NewtonCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonCfg</span></code></a> subclass
-to carry <code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonModelCfg</span></code> alongside the
-normal Newton fields:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.utils.configclass</span><span class="w"> </span><span class="kn">import</span> <span class="n">configclass</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab_newton.physics</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewtonCfg</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab_contrib.deformable</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewtonModelCfg</span>
-
-
-<span class="nd">@configclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">DeformableNewtonCfg</span><span class="p">(</span><span class="n">NewtonCfg</span><span class="p">):</span>
-    <span class="n">model_cfg</span><span class="p">:</span> <span class="n">NewtonModelCfg</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-</pre></div>
-</div>
+the preset is a plain <a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.NewtonCfg" title="isaaclab_newton.physics.NewtonCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonCfg</span></code></a> whose solver
+config carries <code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonModelCfg</span></code> through its
+<code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonModelSolverCfg</span></code> base class.</p>
 <p>The Franka soft-body task defines a <code class="docutils literal notranslate"><span class="pre">newton_mjwarp_vbd</span></code> preset that couples
 MJWarp and VBD:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">PhysicsCfg</span><span class="p">(</span><span class="n">PresetCfg</span><span class="p">):</span>
     <span class="c1"># Newton physics: MJWarp rigid + VBD soft, two-way coupled</span>
-<span class="hll">    <span class="n">newton_mjwarp_vbd</span><span class="p">:</span> <span class="n">DeformableNewtonCfg</span> <span class="o">=</span> <span class="n">DeformableNewtonCfg</span><span class="p">(</span>
-</span><span class="hll">        <span class="n">solver_cfg</span><span class="o">=</span><span class="n">coupled_mjwarp_vbd_solver_cfg</span><span class="p">(),</span>
-</span><span class="hll">        <span class="n">model_cfg</span><span class="o">=</span><span class="n">NewtonModelCfg</span><span class="p">(</span>
-</span><span class="hll">            <span class="n">soft_contact_ke</span><span class="o">=</span><span class="mf">1e4</span><span class="p">,</span>
-</span><span class="hll">            <span class="n">soft_contact_kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
-</span><span class="hll">            <span class="n">soft_contact_mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
-</span><span class="hll">            <span class="n">shape_material_ke</span><span class="o">=</span><span class="mf">4e4</span><span class="p">,</span>
-</span><span class="hll">            <span class="n">shape_material_kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
-</span><span class="hll">            <span class="n">shape_material_mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
-</span><span class="hll">        <span class="p">),</span>
-</span><span class="hll">        <span class="n">num_substeps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-</span><span class="hll">        <span class="n">use_cuda_graph</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-</span><span class="hll">    <span class="p">)</span>
-</span>
-    <span class="n">physx</span><span class="p">:</span> <span class="n">PhysxCfg</span> <span class="o">=</span> <span class="n">PhysxCfg</span><span class="p">()</span>
+    <span class="c1"># (matches newton/examples/softbody/example_softbody_franka.py)</span>
+    <span class="n">newton_mjwarp_vbd</span><span class="p">:</span> <span class="n">NewtonCfg</span> <span class="o">=</span> <span class="n">NewtonCfg</span><span class="p">(</span>
+        <span class="n">solver_cfg</span><span class="o">=</span><span class="n">CoupledMJWarpVBDSolverCfg</span><span class="p">(</span>
+            <span class="n">rigid_solver_cfg</span><span class="o">=</span><span class="n">MJWarpSolverCfg</span><span class="p">(</span>
+                <span class="n">njmax</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span>
+                <span class="n">nconmax</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+                <span class="n">ls_iterations</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+                <span class="n">cone</span><span class="o">=</span><span class="s2">&quot;pyramidal&quot;</span><span class="p">,</span>
+                <span class="n">impratio</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">integrator</span><span class="o">=</span><span class="s2">&quot;implicitfast&quot;</span><span class="p">,</span>
+                <span class="n">ccd_iterations</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="n">soft_solver_cfg</span><span class="o">=</span><span class="n">VBDSolverCfg</span><span class="p">(</span>
+                <span class="n">iterations</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+                <span class="n">integrate_with_external_rigid_solver</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">particle_enable_self_contact</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">particle_collision_detection_interval</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="n">coupling_mode</span><span class="o">=</span><span class="s2">&quot;two_way&quot;</span><span class="p">,</span>
+            <span class="n">model_cfg</span><span class="o">=</span><span class="n">NewtonModelCfg</span><span class="p">(</span>
+                <span class="n">soft_contact_ke</span><span class="o">=</span><span class="mf">1e4</span><span class="p">,</span>
+                <span class="n">soft_contact_kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+                <span class="n">soft_contact_mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">default_shape_cfg</span><span class="o">=</span><span class="n">NewtonShapeCfg</span><span class="p">(</span><span class="n">ke</span><span class="o">=</span><span class="mf">4e4</span><span class="p">,</span> <span class="n">kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">),</span>
+        <span class="n">num_substeps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="p">)</span>
 
-    <span class="n">default</span> <span class="o">=</span> <span class="n">newton_mjwarp_vbd</span>
 </pre></div>
 </div>
 <p>The important pieces are:</p>
 <ul class="simple">
-<li><p>Add a Newton physics preset whose value is <code class="docutils literal notranslate"><span class="pre">DeformableNewtonCfg</span></code>.</p></li>
+<li><p>Add a Newton physics preset whose value is a
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.NewtonCfg" title="isaaclab_newton.physics.NewtonCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonCfg</span></code></a>.</p></li>
 <li><p>Use <code class="xref py py-class docutils literal notranslate"><span class="pre">CoupledMJWarpVBDSolverCfg</span></code> when rigid
 bodies and deformables must interact in the same scene.</p></li>
 <li><p>Use <code class="docutils literal notranslate"><span class="pre">soft_solver_cfg=VBDSolverCfg(integrate_with_external_rigid_solver=True)</span></code>
 inside a coupled solver so VBD advances only the deformable particles.</p></li>
-<li><p>Add <code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonModelCfg</span></code> when body-particle or
+<li><p>Set the solver config’s <code class="docutils literal notranslate"><span class="pre">model_cfg</span></code> to a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonModelCfg</span></code> when body-particle or
 self-contact values need task-level tuning.</p></li>
 <li><p>Keep the preset at the same config path used by the task’s
 <a class="reference internal" href="../../../../api/lab/isaaclab.sim.html#isaaclab.sim.SimulationCfg" title="isaaclab.sim.SimulationCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">SimulationCfg</span></code></a>, for example <code class="docutils literal notranslate"><span class="pre">env.sim.physics</span></code>.</p></li>
@@ -1003,6 +1018,201 @@ VBD should advance deformables:</p>
 <code class="docutils literal notranslate"><span class="pre">ccd_iterations</span></code> can affect fast rigid contacts near deformables. See
 <a class="reference internal" href="mjwarp-solver.html"><span class="doc">MJWarp Solver</span></a> for the MJWarp-side parameters.</p>
 </section>
+<section id="proxy-coupled-mjwarp-vbd">
+<span id="newton-vbd-proxy-coupling"></span><h2>Proxy-Coupled MJWarp + VBD<a class="headerlink" href="#proxy-coupled-mjwarp-vbd" title="Link to this heading">#</a></h2>
+<p><code class="xref py py-class docutils literal notranslate"><span class="pre">CouplerProxyCfg</span></code> is an alternative
+MJWarp + VBD coupling that wraps Newton’s
+<code class="xref py py-class docutils literal notranslate"><span class="pre">newton.solvers.experimental.coupled.SolverCoupledProxy</span></code>. Instead of
+alternating two full-model substeps, the model is <strong>partitioned</strong> between a
+set of named solver entries. Each directed proxy mapping names a source entry
+(rigid, e.g. MJWarp) and a destination entry (soft, e.g. VBD), then exposes
+selected source bodies to the destination solver as <em>proxies</em> — virtual copies
+that the destination collides against. Contact feedback is returned to the
+source solver as lagged impulses. This typically scales better than the
+alternating coupling when only a small set of rigid bodies (e.g. the fingers of
+a gripper) actually needs to touch the deformable, since the bulk of the
+articulation is solved purely by MJWarp without seeing the particle contacts.</p>
+<p>Choose between the two MJWarp + VBD presets based on how much of the rigid
+model needs to interact with the deformable:</p>
+<div class="pst-scrollable-table-container"><table class="table" id="id1">
+<caption><span class="caption-text">Alternating MJWarp + VBD versus proxy coupling</span><a class="headerlink" href="#id1" title="Link to this table">#</a></caption>
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 40.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Consideration</p></th>
+<th class="head"><p>Alternating <code class="docutils literal notranslate"><span class="pre">newton_mjwarp_vbd</span></code></p></th>
+<th class="head"><p>Proxy <code class="docutils literal notranslate"><span class="pre">newton_mjwarp_vbd_proxy</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Interaction model</p></td>
+<td><p>Runs MJWarp and VBD over the shared model and injects deformable
+reactions into the rigid solve in two-way mode.</p></td>
+<td><p>Partitions the model into solver views and exposes only selected source
+bodies or particles as virtual proxies in the destination view.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Advantages</p></td>
+<td><p>Provides direct, same-substep two-way feedback for contacts across the
+rigid model. It is the simpler choice when many robot links may contact
+the deformable.</p></td>
+<td><p>Restricts coupled contact work to a small interface, which can scale
+better when only a gripper or another small body subset interacts with
+the deformable. Named entries also allow supported solver combinations
+beyond the dedicated MJWarp + VBD manager.</p></td>
+</tr>
+<tr class="row-even"><td><p>Trade-offs and limits</p></td>
+<td><p>Uses a dedicated MJWarp + VBD path and performs shared contact work even
+when only a few rigid bodies need deformable contact.</p></td>
+<td><p>Feedback is lagged or staggered and can be more timestep-sensitive.
+Newton’s proxy solver currently supports at most two entries, does not
+support joints that cross entry boundaries, and couples only explicitly
+selected proxy bodies or particles.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Choose it when</p></td>
+<td><p>Tight two-way feedback across much of the articulation matters more than
+limiting the coupling interface.</p></td>
+<td><p>Contact is localized to a known body subset and the reduced interface is
+worth the proxy approximation and topology restrictions.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The Franka soft-body task ships a <code class="docutils literal notranslate"><span class="pre">newton_mjwarp_vbd_proxy</span></code> preset (the new
+default for <code class="docutils literal notranslate"><span class="pre">Isaac-Lift-Soft-Franka</span></code>) that demonstrates the typical
+configuration:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">newton_mjwarp_vbd_proxy</span><span class="p">:</span> <span class="n">NewtonCfg</span> <span class="o">=</span> <span class="n">NewtonCfg</span><span class="p">(</span>
+    <span class="n">solver_cfg</span><span class="o">=</span><span class="n">CouplerProxyCfg</span><span class="p">(</span>
+        <span class="n">entries</span><span class="o">=</span><span class="p">[</span>
+            <span class="n">CouplerEntryCfg</span><span class="p">(</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;rigid&quot;</span><span class="p">,</span>
+                <span class="n">solver_cfg</span><span class="o">=</span><span class="n">MJWarpSolverCfg</span><span class="p">(</span>
+                    <span class="n">cone</span><span class="o">=</span><span class="s2">&quot;elliptic&quot;</span><span class="p">,</span>
+                    <span class="n">ls_iterations</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+                    <span class="n">integrator</span><span class="o">=</span><span class="s2">&quot;implicitfast&quot;</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">bodies</span><span class="o">=</span><span class="p">[</span><span class="sa">r</span><span class="s2">&quot;/World/envs/env_.*/Robot&quot;</span><span class="p">],</span>
+            <span class="p">),</span>
+            <span class="n">CouplerEntryCfg</span><span class="p">(</span>
+                <span class="n">name</span><span class="o">=</span><span class="s2">&quot;soft&quot;</span><span class="p">,</span>
+                <span class="n">solver_cfg</span><span class="o">=</span><span class="n">VBDSolverCfg</span><span class="p">(</span><span class="n">iterations</span><span class="o">=</span><span class="mi">10</span><span class="p">),</span>
+                <span class="n">all_particles</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                <span class="n">include_static_shapes</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">],</span>
+        <span class="n">proxies</span><span class="o">=</span><span class="p">[</span>
+            <span class="n">CouplerProxyMappingCfg</span><span class="p">(</span>
+                <span class="n">source</span><span class="o">=</span><span class="s2">&quot;rigid&quot;</span><span class="p">,</span>
+                <span class="n">destination</span><span class="o">=</span><span class="s2">&quot;soft&quot;</span><span class="p">,</span>
+                <span class="n">bodies</span><span class="o">=</span><span class="p">[</span>
+                    <span class="sa">r</span><span class="s2">&quot;/World/envs/env_.*/Robot/panda_hand&quot;</span><span class="p">,</span>
+                    <span class="sa">r</span><span class="s2">&quot;/World/envs/env_.*/Robot/panda_(left|right)finger&quot;</span><span class="p">,</span>
+                <span class="p">],</span>
+                <span class="n">collide_interval</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">],</span>
+        <span class="n">iterations</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">model_cfg</span><span class="o">=</span><span class="n">NewtonModelCfg</span><span class="p">(</span>
+            <span class="n">soft_contact_ke</span><span class="o">=</span><span class="mf">1e4</span><span class="p">,</span>
+            <span class="n">soft_contact_kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>
+            <span class="n">soft_contact_mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">),</span>
+    <span class="n">default_shape_cfg</span><span class="o">=</span><span class="n">NewtonShapeCfg</span><span class="p">(</span><span class="n">ke</span><span class="o">=</span><span class="mf">4e4</span><span class="p">,</span> <span class="n">kd</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">5.0</span><span class="p">),</span>
+    <span class="n">num_substeps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+<span class="p">)</span>
+
+</pre></div>
+</div>
+<p>What the selectors do:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">entries</span></code> contains one
+<code class="xref py py-class docutils literal notranslate"><span class="pre">CouplerEntryCfg</span></code> per sub-solver. Each
+entry has a stable <code class="docutils literal notranslate"><span class="pre">name</span></code>, its own <code class="docutils literal notranslate"><span class="pre">solver_cfg</span></code>, and explicit model
+ownership selectors.</p></li>
+<li><p>An entry’s <code class="docutils literal notranslate"><span class="pre">bodies</span></code> selectors are full Newton body-label regex strings.
+By default, joints inherit their child body’s owner and
+shapes inherit their body’s owner. Use <code class="docutils literal notranslate"><span class="pre">all_particles=True</span></code> to own all
+deformable particles and <code class="docutils literal notranslate"><span class="pre">include_static_shapes=True</span></code> to own world
+geometry. Bodies, particles, joints, and shapes may be assigned to at most
+one entry; unassigned elements remain outside the nested solver views.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">proxies</span></code> contains directed
+<code class="xref py py-class docutils literal notranslate"><span class="pre">CouplerProxyMappingCfg</span></code> mappings. Each mapping
+names its <code class="docutils literal notranslate"><span class="pre">source</span></code> and <code class="docutils literal notranslate"><span class="pre">destination</span></code> entries, then uses <code class="docutils literal notranslate"><span class="pre">bodies</span></code> to
+select the source bodies that the destination solver should collide against.
+Only bodies that own at least one <code class="docutils literal notranslate"><span class="pre">newton.ShapeFlags.COLLIDE_SHAPES</span></code> shape
+are kept.</p></li>
+<li><p>In the snippet above, the entire Franka articulation is routed to MJWarp,
+while the deformable particles and static table/world shapes are routed to
+VBD. Only the <code class="docutils literal notranslate"><span class="pre">panda_hand</span></code> and the two fingers are exposed as proxies —
+so VBD only ever sees three rigid proxies regardless of how many links the
+arm has.</p></li>
+</ul>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>The coupler currently rejects
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.KaminoSolverCfg" title="isaaclab_newton.physics.KaminoSolverCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">KaminoSolverCfg</span></code></a> entries and
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.MPMSolverCfg" title="isaaclab_newton.physics.MPMSolverCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">MPMSolverCfg</span></code></a> entries configured with
+<code class="docutils literal notranslate"><span class="pre">project_outside_colliders=True</span></code>, as well as
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.MJWarpSolverCfg" title="isaaclab_newton.physics.MJWarpSolverCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">MJWarpSolverCfg</span></code></a> entries configured with
+<code class="docutils literal notranslate"><span class="pre">use_mujoco_cpu=True</span></code>. These configurations require manager-specific
+build, forward-kinematics, reset, or per-step lifecycle hooks that are not
+yet available to nested solvers. Use MPM with
+<code class="docutils literal notranslate"><span class="pre">project_outside_colliders=False</span></code> and GPU MJWarp, or run these solvers
+through their standalone managers until nested lifecycle support is added.</p>
+</div>
+<p>Key proxy-specific parameters:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CouplerProxyMappingCfg.mode</span></code></p></td>
+<td><p>Default: <code class="docutils literal notranslate"><span class="pre">&quot;lagged&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">&quot;lagged&quot;</span></code> syncs source begin poses and end
+velocities, then rewinds lagged feedback before the destination solve.
+<code class="docutils literal notranslate"><span class="pre">&quot;staggered&quot;</span></code> syncs source end poses and end velocities directly.
+Lagged is the safer default; staggered can be tighter but is more
+sensitive to timestep.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CouplerProxyCfg.iterations</span></code></p></td>
+<td><p>Default: <code class="docutils literal notranslate"><span class="pre">1</span></code>. Number of relaxation iterations per coupled substep.
+Increase it when proxy contact feedback needs more accuracy.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CouplerProxyMappingCfg.collide_interval</span></code></p></td>
+<td><p>Default: <code class="docutils literal notranslate"><span class="pre">None</span></code> (every proxy pass). How often the proxy collision
+pipeline rebuilds candidate pairs. Increase it for cheaper but slightly
+staler proxy contacts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CouplerProxyMappingCfg.mass_scale</span></code></p></td>
+<td><p>Default: <code class="docutils literal notranslate"><span class="pre">1.0</span></code>. Multiplier for the virtual inertia of proxy bodies
+in the VBD view. Increase it to make proxies behave more like fixed
+obstacles to VBD.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Body selectors must use full Newton body-label regexes, such as
+<code class="docutils literal notranslate"><span class="pre">/World/envs/env_.*/Robot</span></code>. Proxy mappings also accept raw Newton body ids.</p>
+<p>Try the demo:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># zero-agent visual smoke test (default preset is now the proxy-coupled one)</span>
+./isaaclab.sh<span class="w"> </span>-p<span class="w"> </span>scripts/environments/zero_agent.py<span class="w"> </span>--task<span class="w"> </span>Isaac-Lift-Soft-Franka<span class="w"> </span>--num_envs<span class="w"> </span><span class="m">1</span><span class="w"> </span>--visualizer<span class="w"> </span>kit
+
+<span class="c1"># scripted pick-and-lift via state machine</span>
+./isaaclab.sh<span class="w"> </span>-p<span class="w"> </span>scripts/environments/state_machine/lift_franka_soft.py<span class="w"> </span>--num_envs<span class="w"> </span><span class="m">1</span>
+
+<span class="c1"># explicitly select the alternating-substep preset instead</span>
+./isaaclab.sh<span class="w"> </span>-p<span class="w"> </span>scripts/environments/zero_agent.py<span class="w"> </span>--task<span class="w"> </span>Isaac-Lift-Soft-Franka<span class="w"> </span>--num_envs<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nv">presets</span><span class="o">=</span>newton_mjwarp_vbd
+</pre></div>
+</div>
+</section>
 <section id="contact-and-material-parameters">
 <h2>Contact and Material Parameters<a class="headerlink" href="#contact-and-material-parameters" title="Link to this heading">#</a></h2>
 <section id="contact-model">
@@ -1029,18 +1239,13 @@ to the finalized Newton model:</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">soft_contact_mu</span></code></p></td>
 <td><p>Default: <code class="docutils literal notranslate"><span class="pre">0.5</span></code>. Friction coefficient for body-particle and particle self-contact. Increase it when a gripper cannot carry the deformable object without slipping.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">shape_material_ke</span></code></p></td>
-<td><p>Default: <code class="docutils literal notranslate"><span class="pre">None</span></code> [N/m]. Optional override for all rigid collision-shape contact stiffness values in the Newton model. Use this when the rigid-side material parsed from the asset is not appropriate for deformable contact.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">shape_material_kd</span></code></p></td>
-<td><p>Default: <code class="docutils literal notranslate"><span class="pre">None</span></code> [N*s/m]. Optional override for all rigid collision-shape contact damping values in the Newton model.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">shape_material_mu</span></code></p></td>
-<td><p>Default: <code class="docutils literal notranslate"><span class="pre">None</span></code>. Optional override for all rigid collision-shape friction values in the Newton model. Body-particle friction depends on both the soft contact and rigid shape friction coefficients.</p></td>
-</tr>
 </tbody>
 </table>
 </div>
+<p>To set rigid collision-shape contact properties (<code class="docutils literal notranslate"><span class="pre">ke</span></code>, <code class="docutils literal notranslate"><span class="pre">kd</span></code>, <code class="docutils literal notranslate"><span class="pre">mu</span></code>) for
+shapes that lack an explicit per-asset material, use
+<a class="reference internal" href="../../../../api/lab_newton/isaaclab_newton.physics.html#isaaclab_newton.physics.NewtonShapeCfg" title="isaaclab_newton.physics.NewtonShapeCfg"><code class="xref py py-class docutils literal notranslate"><span class="pre">NewtonShapeCfg</span></code></a> on <code class="docutils literal notranslate"><span class="pre">NewtonCfg.default_shape_cfg</span></code>
+instead. Per-asset materials override these defaults.</p>
 </section>
 <section id="volume-deformable-materials">
 <h3>Volume Deformable Materials<a class="headerlink" href="#volume-deformable-materials" title="Link to this heading">#</a></h3>
@@ -1164,7 +1369,7 @@ stable.</p></li>
 <td><p>Increase <code class="docutils literal notranslate"><span class="pre">soft_contact_ke</span></code>, VBD <code class="docutils literal notranslate"><span class="pre">iterations</span></code>, <code class="docutils literal notranslate"><span class="pre">num_substeps</span></code>, or the deformable material <code class="docutils literal notranslate"><span class="pre">particle_radius</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p>The robot cannot lift the deformable.</p></td>
-<td><p>Use <code class="docutils literal notranslate"><span class="pre">coupling_mode=&quot;two_way&quot;</span></code>, then increase <code class="docutils literal notranslate"><span class="pre">soft_contact_mu</span></code> and rigid-side <code class="docutils literal notranslate"><span class="pre">shape_material_mu</span></code>. Also check gripper actuator stiffness and effort limits.</p></td>
+<td><p>Use <code class="docutils literal notranslate"><span class="pre">coupling_mode=&quot;two_way&quot;</span></code>, then increase <code class="docutils literal notranslate"><span class="pre">soft_contact_mu</span></code> and the rigid-side shape friction (per-asset material <code class="docutils literal notranslate"><span class="pre">mu</span></code> or <code class="docutils literal notranslate"><span class="pre">NewtonShapeCfg.mu</span></code>). Also check gripper actuator stiffness and effort limits.</p></td>
 </tr>
 <tr class="row-even"><td><p>The deformable barely deforms.</p></td>
 <td><p>Reduce material stiffness, <code class="docutils literal notranslate"><span class="pre">soft_contact_ke</span></code>, or shape contact stiffness.</p></td>
@@ -1181,7 +1386,7 @@ stable.</p></li>
 </tbody>
 </table>
 </div>
-<p>For implementation details of the VBD and coupled solver managers, see
+<p>For implementation details of the VBD managers and Newton coupler, see
 <a class="reference internal" href="newton-manager-abstraction.html"><span class="doc">Newton Manager Abstraction</span></a>.</p>
 </section>
 </section>
@@ -1242,6 +1447,7 @@ stable.</p></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#coupled-solver-parameters">Coupled Solver Parameters</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#proxy-coupled-mjwarp-vbd">Proxy-Coupled MJWarp + VBD</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contact-and-material-parameters">Contact and Material Parameters</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#contact-model">Contact Model</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#volume-deformable-materials">Volume Deformable Materials</a></li>
@@ -1283,7 +1489,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

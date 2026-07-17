@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -477,6 +477,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -688,39 +689,22 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
-
 <span class="kn">import</span><span class="w"> </span><span class="nn">warp</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">wp</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab_newton.physics.newton_manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewtonManager</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">newton</span><span class="w"> </span><span class="kn">import</span> <span class="n">Contacts</span><span class="p">,</span> <span class="n">Control</span><span class="p">,</span> <span class="n">Model</span><span class="p">,</span> <span class="n">ModelBuilder</span><span class="p">,</span> <span class="n">State</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">newton._src.usd.schemas</span><span class="w"> </span><span class="kn">import</span> <span class="n">SchemaResolverNewton</span><span class="p">,</span> <span class="n">SchemaResolverPhysx</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">newton</span><span class="w"> </span><span class="kn">import</span> <span class="n">Contacts</span><span class="p">,</span> <span class="n">Control</span><span class="p">,</span> <span class="n">Model</span><span class="p">,</span> <span class="n">State</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">newton.solvers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SolverBase</span><span class="p">,</span> <span class="n">SolverMuJoCo</span><span class="p">,</span> <span class="n">SolverVBD</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.sim.utils.stage</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_current_stage</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">.deformable_object</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">add_deformable_entry_to_builder</span><span class="p">,</span>
-    <span class="n">clear_deformable_builder_hooks</span><span class="p">,</span>
-    <span class="n">install_deformable_builder_hooks</span><span class="p">,</span>
-    <span class="n">setup_registered_deformable_fabric_sync</span><span class="p">,</span>
-<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.kernels</span><span class="w"> </span><span class="kn">import</span> <span class="n">_kernel_body_particle_reaction</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.newton_manager_cfg</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoupledMJWarpVBDSolverCfg</span>
-
-<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.sim.simulation_context</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimulationContext</span>
-
-<span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.vbd_manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">NewtonVBDManager</span>
 
 
 <div class="viewcode-block" id="NewtonCoupledMJWarpVBDManager">
 <a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.coupled_mjwarp_vbd_manager.NewtonCoupledMJWarpVBDManager">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">NewtonCoupledMJWarpVBDManager</span><span class="p">(</span><span class="n">NewtonManager</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;:class:`NewtonManager` specialization for the coupled MJWarp + VBD</span>
-<span class="sd">    solver. Due to Newton deformables not being properly integrated yet, this</span>
-<span class="sd">    manager uses the same temporary solutions from VBD Manager.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NewtonCoupledMJWarpVBDManager</span><span class="p">(</span><span class="n">NewtonVBDManager</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;:class:`NewtonVBDManager` specialization for the coupled MJWarp + VBD</span>
+<span class="sd">    solver. Reuses the VBD manager&#39;s deformable stage handling and adds a</span>
+<span class="sd">    custom rigid/soft coupling step.</span>
 
 <span class="sd">    Always uses Newton&#39;s :class:`CollisionPipeline` for contact handling.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -728,28 +712,6 @@
     <span class="n">_rigid_solver</span><span class="p">:</span> <span class="n">SolverMuJoCo</span>
     <span class="n">_soft_solver</span><span class="p">:</span> <span class="n">SolverVBD</span>
     <span class="n">_coupling_mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-
-<div class="viewcode-block" id="NewtonCoupledMJWarpVBDManager.initialize">
-<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.coupled_mjwarp_vbd_manager.NewtonCoupledMJWarpVBDManager.initialize">[docs]</a>
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">initialize</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">sim_context</span><span class="p">:</span> <span class="n">SimulationContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the manager with simulation context.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            sim_context: Parent simulation context.</span>
-
-<span class="sd">        TODO: Subclass should not override this method, once deformables</span>
-<span class="sd">        supported on Newton import_usd, this can be unified with NewtonManager&#39;s</span>
-<span class="sd">        implementation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-
-        <span class="c1"># Deformable body registry and extension hooks.</span>
-        <span class="c1"># Experimental deformable support registers callbacks here so the manager</span>
-        <span class="c1"># and cloner can invoke them without hard-coding deformable logic.</span>
-        <span class="n">install_deformable_builder_hooks</span><span class="p">()</span>
-
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">initialize</span><span class="p">(</span><span class="n">sim_context</span><span class="p">)</span></div>
-
 
 <div class="viewcode-block" id="NewtonCoupledMJWarpVBDManager.step">
 <a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.coupled_mjwarp_vbd_manager.NewtonCoupledMJWarpVBDManager.step">[docs]</a>
@@ -773,191 +735,6 @@
 
 
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_solver_specific_clear</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clear VBD-specific state.&quot;&quot;&quot;</span>
-        <span class="n">clear_deformable_builder_hooks</span><span class="p">()</span>
-
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_get_deformable_ignore_paths</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return USD prim paths to skip when calling ``builder.add_usd``.</span>
-
-<span class="sd">        For each registered deformable body, both the simulation mesh (which</span>
-<span class="sd">        carries ``UsdPhysics.CollisionAPI``) and the visual mesh are returned.</span>
-<span class="sd">        The sim mesh must be skipped so Newton does not create a redundant</span>
-<span class="sd">        static mesh collider alongside the particles produced by</span>
-<span class="sd">        ``add_soft_mesh``.  The visual mesh is skipped so Newton does not</span>
-<span class="sd">        treat it as a collider — Kit reads it directly from USD for rendering.</span>
-
-<span class="sd">        Paths may contain regex patterns; Newton&#39;s ``add_usd`` matches them</span>
-<span class="sd">        via :func:`re.match`.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_deformable_registry</span><span class="p">:</span>
-            <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">sim_mesh_prim_path</span><span class="p">)</span>
-            <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">vis_mesh_prim_path</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">paths</span>
-
-<div class="viewcode-block" id="NewtonCoupledMJWarpVBDManager.start_simulation">
-<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.coupled_mjwarp_vbd_manager.NewtonCoupledMJWarpVBDManager.start_simulation">[docs]</a>
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">start_simulation</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Start simulation by finalizing model and initializing state.</span>
-
-<span class="sd">        This function finalizes the model and initializes the simulation state.</span>
-<span class="sd">        Note: Collision pipeline is initialized later in initialize_solver() after</span>
-<span class="sd">        we determine whether the solver needs external collision detection.</span>
-
-<span class="sd">        TODO: Subclass should not override this method, missing piece is</span>
-<span class="sd">        having Newton bind a surface mesh to volume deformable tetrahedral mesh</span>
-<span class="sd">        in addition to removing the deformable_registry data structure.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">start_simulation</span><span class="p">()</span>
-
-        <span class="c1"># Apply global model parameters from :class:`NewtonModelCfg` to the finalized model.</span>
-        <span class="c1"># Sets ``soft_contact_ke/kd/mu`` and optionally overrides per-shape</span>
-        <span class="c1"># ``shape_material_ke/kd/mu`` on the Newton model.</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">isaaclab.physics</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicsManager</span>
-
-        <span class="n">cfg</span> <span class="o">=</span> <span class="n">PhysicsManager</span><span class="o">.</span><span class="n">_cfg</span>
-        <span class="k">if</span> <span class="n">cfg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="s2">&quot;model_cfg&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_cfg</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">model</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_model</span>
-            <span class="k">if</span> <span class="n">model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">return</span>
-
-            <span class="n">model_cfg</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_cfg</span>
-            <span class="n">model</span><span class="o">.</span><span class="n">soft_contact_ke</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">soft_contact_ke</span><span class="p">)</span>
-            <span class="n">model</span><span class="o">.</span><span class="n">soft_contact_kd</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">soft_contact_kd</span><span class="p">)</span>
-            <span class="n">model</span><span class="o">.</span><span class="n">soft_contact_mu</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">soft_contact_mu</span><span class="p">)</span>
-
-            <span class="k">if</span> <span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_ke</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">model</span><span class="o">.</span><span class="n">shape_material_ke</span><span class="o">.</span><span class="n">fill_</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_ke</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_kd</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">model</span><span class="o">.</span><span class="n">shape_material_kd</span><span class="o">.</span><span class="n">fill_</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_kd</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_mu</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">model</span><span class="o">.</span><span class="n">shape_material_mu</span><span class="o">.</span><span class="n">fill_</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">shape_material_mu</span><span class="p">))</span>
-
-        <span class="c1"># Setup USD/Fabric sync for Kit viewport deformable rendering</span>
-        <span class="n">setup_registered_deformable_fabric_sync</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="NewtonCoupledMJWarpVBDManager.instantiate_builder_from_stage">
-<a class="viewcode-back" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html#isaaclab_contrib.deformable.coupled_mjwarp_vbd_manager.NewtonCoupledMJWarpVBDManager.instantiate_builder_from_stage">[docs]</a>
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">instantiate_builder_from_stage</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create builder from USD stage with special treatment for deformable</span>
-<span class="sd">        bodies, as these are not read from USD yet.</span>
-
-<span class="sd">        Detects env Xforms (e.g. ``/World/Env_0``, ``/World/Env_1``) and builds</span>
-<span class="sd">        each as a separate Newton world via ``begin_world``/``end_world``.</span>
-<span class="sd">        Falls back to a flat ``add_usd`` when no env Xforms are found.</span>
-
-<span class="sd">        TODO: Subclass should not override this method, once deformables</span>
-<span class="sd">        supported on Newton import_usd, this can be unified with NewtonManager&#39;s</span>
-<span class="sd">        implementation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
-
-        <span class="kn">from</span><span class="w"> </span><span class="nn">pxr</span><span class="w"> </span><span class="kn">import</span> <span class="n">UsdGeom</span>
-
-        <span class="n">stage</span> <span class="o">=</span> <span class="n">get_current_stage</span><span class="p">()</span>
-        <span class="n">up_axis</span> <span class="o">=</span> <span class="n">UsdGeom</span><span class="o">.</span><span class="n">GetStageUpAxis</span><span class="p">(</span><span class="n">stage</span><span class="p">)</span>
-
-        <span class="c1"># Scan /World children for env-like Xforms (Env_0, env_1, ...)</span>
-        <span class="n">env_pattern</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;^[Ee]nv_(\d+)$&quot;</span><span class="p">)</span>
-        <span class="n">world_prim</span> <span class="o">=</span> <span class="n">stage</span><span class="o">.</span><span class="n">GetPrimAtPath</span><span class="p">(</span><span class="s2">&quot;/World&quot;</span><span class="p">)</span>
-        <span class="n">env_paths</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">if</span> <span class="n">world_prim</span> <span class="ow">and</span> <span class="n">world_prim</span><span class="o">.</span><span class="n">IsValid</span><span class="p">():</span>
-            <span class="k">for</span> <span class="n">child</span> <span class="ow">in</span> <span class="n">world_prim</span><span class="o">.</span><span class="n">GetChildren</span><span class="p">():</span>
-                <span class="n">m</span> <span class="o">=</span> <span class="n">env_pattern</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">GetName</span><span class="p">())</span>
-                <span class="k">if</span> <span class="n">m</span><span class="p">:</span>
-                    <span class="n">env_paths</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="nb">int</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)),</span> <span class="n">child</span><span class="o">.</span><span class="n">GetPath</span><span class="p">()</span><span class="o">.</span><span class="n">pathString</span><span class="p">))</span>
-        <span class="n">env_paths</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-
-        <span class="n">builder</span> <span class="o">=</span> <span class="n">ModelBuilder</span><span class="p">(</span><span class="n">up_axis</span><span class="o">=</span><span class="n">up_axis</span><span class="p">)</span>
-
-        <span class="n">schema_resolvers</span> <span class="o">=</span> <span class="p">[</span><span class="n">SchemaResolverNewton</span><span class="p">(),</span> <span class="n">SchemaResolverPhysx</span><span class="p">()]</span>
-
-        <span class="c1"># Deformable sim/visual mesh paths must be skipped by ``add_usd``</span>
-        <span class="c1"># so they don&#39;t get duplicated as static colliders.</span>
-        <span class="n">deformable_ignore_paths</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_get_deformable_ignore_paths</span><span class="p">()</span>
-
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">env_paths</span><span class="p">:</span>
-            <span class="c1"># No env Xforms — flat loading</span>
-            <span class="n">builder</span><span class="o">.</span><span class="n">add_usd</span><span class="p">(</span><span class="n">stage</span><span class="p">,</span> <span class="n">ignore_paths</span><span class="o">=</span><span class="n">deformable_ignore_paths</span><span class="p">,</span> <span class="n">schema_resolvers</span><span class="o">=</span><span class="n">schema_resolvers</span><span class="p">)</span>
-
-            <span class="c1"># Add deformable bodies from the registry (single world at origin).</span>
-            <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_deformable_registry</span><span class="p">:</span>
-                <span class="n">add_deformable_entry_to_builder</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">])</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># Load everything except the env subtrees (ground plane, lights, etc.)</span>
-            <span class="n">ignore_paths</span> <span class="o">=</span> <span class="p">[</span><span class="n">path</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">env_paths</span><span class="p">]</span> <span class="o">+</span> <span class="n">deformable_ignore_paths</span>
-            <span class="n">builder</span><span class="o">.</span><span class="n">add_usd</span><span class="p">(</span><span class="n">stage</span><span class="p">,</span> <span class="n">ignore_paths</span><span class="o">=</span><span class="n">ignore_paths</span><span class="p">,</span> <span class="n">schema_resolvers</span><span class="o">=</span><span class="n">schema_resolvers</span><span class="p">)</span>
-
-            <span class="c1"># Build a prototype from the first env (all envs assumed identical)</span>
-            <span class="n">_</span><span class="p">,</span> <span class="n">proto_path</span> <span class="o">=</span> <span class="n">env_paths</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">proto</span> <span class="o">=</span> <span class="n">ModelBuilder</span><span class="p">(</span><span class="n">up_axis</span><span class="o">=</span><span class="n">up_axis</span><span class="p">)</span>
-            <span class="n">proto</span><span class="o">.</span><span class="n">add_usd</span><span class="p">(</span>
-                <span class="n">stage</span><span class="p">,</span>
-                <span class="n">root_path</span><span class="o">=</span><span class="n">proto_path</span><span class="p">,</span>
-                <span class="n">ignore_paths</span><span class="o">=</span><span class="n">deformable_ignore_paths</span><span class="p">,</span>
-                <span class="n">schema_resolvers</span><span class="o">=</span><span class="n">schema_resolvers</span><span class="p">,</span>
-            <span class="p">)</span>
-
-            <span class="c1"># Inject registered sites into the proto before replication</span>
-            <span class="n">global_sites</span><span class="p">,</span> <span class="n">proto_sites</span><span class="p">,</span> <span class="n">world_sites</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_cl_inject_sites</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="p">{</span><span class="n">proto_path</span><span class="p">:</span> <span class="n">proto</span><span class="p">})</span>
-            <span class="n">global_site_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">global_sites</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-            <span class="n">num_worlds</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">env_paths</span><span class="p">)</span>
-            <span class="n">local_site_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">{}</span>
-            <span class="n">site_entries</span> <span class="o">=</span> <span class="n">proto_sites</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">proto</span><span class="p">),</span> <span class="p">{})</span>
-
-            <span class="c1"># Add each env as a separate Newton world</span>
-            <span class="n">xform_cache</span> <span class="o">=</span> <span class="n">UsdGeom</span><span class="o">.</span><span class="n">XformCache</span><span class="p">()</span>
-            <span class="k">for</span> <span class="n">col</span><span class="p">,</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">env_path</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">env_paths</span><span class="p">):</span>
-                <span class="n">builder</span><span class="o">.</span><span class="n">begin_world</span><span class="p">()</span>
-                <span class="n">offset</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">shape_count</span>
-                <span class="n">world_xform</span> <span class="o">=</span> <span class="n">xform_cache</span><span class="o">.</span><span class="n">GetLocalToWorldTransform</span><span class="p">(</span><span class="n">stage</span><span class="o">.</span><span class="n">GetPrimAtPath</span><span class="p">(</span><span class="n">env_path</span><span class="p">))</span>
-                <span class="n">translation</span> <span class="o">=</span> <span class="n">world_xform</span><span class="o">.</span><span class="n">ExtractTranslation</span><span class="p">()</span>
-                <span class="n">rotation</span> <span class="o">=</span> <span class="n">world_xform</span><span class="o">.</span><span class="n">ExtractRotationQuat</span><span class="p">()</span>
-                <span class="n">pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">translation</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">translation</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">translation</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
-                <span class="n">quat</span> <span class="o">=</span> <span class="p">(</span>
-                    <span class="n">rotation</span><span class="o">.</span><span class="n">GetImaginary</span><span class="p">()[</span><span class="mi">0</span><span class="p">],</span>
-                    <span class="n">rotation</span><span class="o">.</span><span class="n">GetImaginary</span><span class="p">()[</span><span class="mi">1</span><span class="p">],</span>
-                    <span class="n">rotation</span><span class="o">.</span><span class="n">GetImaginary</span><span class="p">()[</span><span class="mi">2</span><span class="p">],</span>
-                    <span class="n">rotation</span><span class="o">.</span><span class="n">GetReal</span><span class="p">(),</span>
-                <span class="p">)</span>
-                <span class="n">env_xform</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">pos</span><span class="p">,</span> <span class="n">quat</span><span class="p">)</span>
-                <span class="n">builder</span><span class="o">.</span><span class="n">add_builder</span><span class="p">(</span><span class="n">proto</span><span class="p">,</span> <span class="n">xform</span><span class="o">=</span><span class="n">env_xform</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">xform</span> <span class="ow">in</span> <span class="n">world_sites</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                    <span class="k">if</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">local_site_map</span><span class="p">:</span>
-                        <span class="n">local_site_map</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_worlds</span><span class="p">)]</span>
-                    <span class="n">site_idx</span> <span class="o">=</span> <span class="n">builder</span><span class="o">.</span><span class="n">add_site</span><span class="p">(</span><span class="n">body</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">xform</span><span class="o">=</span><span class="n">wp</span><span class="o">.</span><span class="n">transform_multiply</span><span class="p">(</span><span class="n">env_xform</span><span class="p">,</span> <span class="n">xform</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">)</span>
-                    <span class="n">local_site_map</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">site_idx</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">proto_shape_indices</span> <span class="ow">in</span> <span class="n">site_entries</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                    <span class="k">if</span> <span class="n">label</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">local_site_map</span><span class="p">:</span>
-                        <span class="n">local_site_map</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_worlds</span><span class="p">)]</span>
-                    <span class="k">for</span> <span class="n">proto_shape_idx</span> <span class="ow">in</span> <span class="n">proto_shape_indices</span><span class="p">:</span>
-                        <span class="n">local_site_map</span><span class="p">[</span><span class="n">label</span><span class="p">][</span><span class="n">col</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">offset</span> <span class="o">+</span> <span class="n">proto_shape_idx</span><span class="p">)</span>
-
-                <span class="c1"># Add deformable bodies from the registry into this world.</span>
-                <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_deformable_registry</span><span class="p">:</span>
-                    <span class="n">add_deformable_entry_to_builder</span><span class="p">(</span><span class="n">builder</span><span class="p">,</span> <span class="n">entry</span><span class="p">,</span> <span class="n">col</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">pos</span><span class="p">),</span> <span class="n">quat</span><span class="p">)</span>
-
-                <span class="n">builder</span><span class="o">.</span><span class="n">end_world</span><span class="p">()</span>
-
-            <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_cl_site_index_map</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="o">**</span><span class="n">global_site_map</span><span class="p">,</span>
-                <span class="o">**</span><span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">per_world</span><span class="p">)</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">per_world</span> <span class="ow">in</span> <span class="n">local_site_map</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span>
-            <span class="p">}</span>
-            <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_num_envs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">env_paths</span><span class="p">)</span>
-
-        <span class="c1"># Call builder.color() if any deformable entries were added (required by VBD solver)</span>
-        <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_deformable_registry</span><span class="p">:</span>
-            <span class="n">builder</span><span class="o">.</span><span class="n">color</span><span class="p">()</span>
-
-        <span class="bp">cls</span><span class="o">.</span><span class="n">set_builder</span><span class="p">(</span><span class="n">builder</span><span class="p">)</span></div>
-
-
-    <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_solver</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">:</span> <span class="n">CoupledMJWarpVBDSolverCfg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct a custom coupling between two solvers and populate the</span>
 <span class="sd">        base-class slots.</span>
@@ -965,15 +742,15 @@
 <span class="sd">        VBD always uses Newton&#39;s :class:`CollisionPipeline` and steps with</span>
 <span class="sd">        separate input/output states, so the flags are fixed.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">coupling_mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;one_way&quot;</span><span class="p">,</span> <span class="s2">&quot;two_way&quot;</span><span class="p">}:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Unknown coupling_mode=</span><span class="si">{</span><span class="n">solver_cfg</span><span class="o">.</span><span class="n">coupling_mode</span><span class="si">!r}</span><span class="s2">; expected one of </span><span class="se">{{</span><span class="s2">&#39;one_way&#39;, &#39;two_way&#39;</span><span class="se">}}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
         <span class="bp">cls</span><span class="o">.</span><span class="n">_coupling_mode</span> <span class="o">=</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">coupling_mode</span>
 
-        <span class="n">valid</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">SolverMuJoCo</span><span class="o">.</span><span class="fm">__init__</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span><span class="p">)</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;self&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">}</span>
-        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">rigid_solver_cfg</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">}</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_rigid_solver</span> <span class="o">=</span> <span class="n">SolverMuJoCo</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
-
-        <span class="n">valid</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">SolverVBD</span><span class="o">.</span><span class="fm">__init__</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span><span class="p">)</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;self&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">}</span>
-        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">soft_solver_cfg</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">}</span>
-        <span class="bp">cls</span><span class="o">.</span><span class="n">_soft_solver</span> <span class="o">=</span> <span class="n">SolverVBD</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_rigid_solver</span> <span class="o">=</span> <span class="n">SolverMuJoCo</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="bp">cls</span><span class="o">.</span><span class="n">_filter_solver_kwargs</span><span class="p">(</span><span class="n">SolverMuJoCo</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">rigid_solver_cfg</span><span class="p">))</span>
+        <span class="bp">cls</span><span class="o">.</span><span class="n">_soft_solver</span> <span class="o">=</span> <span class="n">SolverVBD</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="bp">cls</span><span class="o">.</span><span class="n">_filter_solver_kwargs</span><span class="p">(</span><span class="n">SolverVBD</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">soft_solver_cfg</span><span class="p">))</span>
 
         <span class="c1"># Dummy solver for the newtonmanager</span>
         <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_solver</span> <span class="o">=</span> <span class="n">SolverBase</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
@@ -996,8 +773,10 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_coupling_mode</span> <span class="o">==</span> <span class="s2">&quot;one_way&quot;</span><span class="p">:</span>
             <span class="bp">cls</span><span class="o">.</span><span class="n">_step_one_way</span><span class="p">(</span><span class="n">state_in</span><span class="p">,</span> <span class="n">state_out</span><span class="p">,</span> <span class="n">control</span><span class="p">,</span> <span class="n">substep_dt</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_coupling_mode</span> <span class="o">==</span> <span class="s2">&quot;two_way&quot;</span><span class="p">:</span>
             <span class="bp">cls</span><span class="o">.</span><span class="n">_step_two_way</span><span class="p">(</span><span class="n">state_in</span><span class="p">,</span> <span class="n">state_out</span><span class="p">,</span> <span class="n">control</span><span class="p">,</span> <span class="n">substep_dt</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown coupling_mode=</span><span class="si">{</span><span class="bp">cls</span><span class="o">.</span><span class="n">_coupling_mode</span><span class="si">!r}</span><span class="s2">; expected one of </span><span class="se">{{</span><span class="s2">&#39;one_way&#39;, &#39;two_way&#39;</span><span class="se">}}</span><span class="s2">.&quot;</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_simulate_physics_only</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
@@ -1167,7 +946,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

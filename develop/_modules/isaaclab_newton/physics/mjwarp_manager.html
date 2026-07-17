@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -477,6 +477,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -688,7 +689,6 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">inspect</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -716,6 +716,14 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_solver</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">:</span> <span class="n">MJWarpSolverCfg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SolverMuJoCo</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct the configured MuJoCo Warp solver.&quot;&quot;&quot;</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_filter_solver_kwargs</span><span class="p">(</span><span class="n">SolverMuJoCo</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">)</span>
+        <span class="c1"># ls_parallel is deprecated in newton; forwarding it (even as False) emits a warning.</span>
+        <span class="n">kwargs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;ls_parallel&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">SolverMuJoCo</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_solver</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">:</span> <span class="n">MJWarpSolverCfg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct :class:`SolverMuJoCo` and populate the base-class slots.</span>
 
@@ -725,10 +733,7 @@
 <span class="sd">        :attr:`NewtonManager._needs_collision_pipeline` to</span>
 <span class="sd">        ``True`` only when ``use_mujoco_contacts=False``.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">ignored</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;class_type&quot;</span><span class="p">,</span> <span class="s2">&quot;solver_type&quot;</span><span class="p">,</span> <span class="s2">&quot;ls_parallel&quot;</span><span class="p">}</span>
-        <span class="n">valid</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">SolverMuJoCo</span><span class="o">.</span><span class="fm">__init__</span><span class="p">)</span><span class="o">.</span><span class="n">parameters</span><span class="p">)</span> <span class="o">-</span> <span class="p">{</span><span class="s2">&quot;self&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">}</span> <span class="o">-</span> <span class="n">ignored</span>
-        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">valid</span><span class="p">}</span>
-        <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_solver</span> <span class="o">=</span> <span class="n">SolverMuJoCo</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_solver</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_create_solver</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">)</span>
         <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_use_single_state</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_needs_collision_pipeline</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">use_mujoco_contacts</span>
 
@@ -869,7 +874,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>

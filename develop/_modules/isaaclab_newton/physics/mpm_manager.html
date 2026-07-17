@@ -61,7 +61,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="3.0.0" />
-    <meta name="docbuild:last-update" content="Jul 16, 2026"/>
+    <meta name="docbuild:last-update" content="Jul 17, 2026"/>
   </head>
   
   
@@ -477,6 +477,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.actuators.html">isaaclab_contrib.actuators</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.assets.html">isaaclab_contrib.assets</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.controllers.html">isaaclab_contrib.controllers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.coupling.html">isaaclab_contrib.coupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.deformable.html">isaaclab_contrib.deformable</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.mdp.html">isaaclab_contrib.mdp</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../source/api/lab_contrib/isaaclab_contrib.rl.html">isaaclab_contrib.rl</a></li>
@@ -772,6 +773,15 @@
                 <span class="n">builder</span><span class="o">.</span><span class="n">body_inv_inertia</span><span class="p">[</span><span class="n">body_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">wp</span><span class="o">.</span><span class="n">mat33</span><span class="p">()</span>
 
     <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_create_solver</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">:</span> <span class="n">MPMSolverCfg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SolverImplicitMPM</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct the configured implicit MPM solver.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">SolverImplicitMPM</span><span class="p">(</span>
+            <span class="n">model</span><span class="p">,</span>
+            <span class="n">_make_solver_config</span><span class="p">(</span><span class="n">solver_cfg</span><span class="p">),</span>
+            <span class="n">temporary_store</span><span class="o">=</span><span class="n">TemporaryStore</span><span class="p">(),</span>
+        <span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_solver</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">:</span> <span class="n">MPMSolverCfg</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Construct :class:`SolverImplicitMPM` and populate the base-class slots.</span>
 
@@ -783,11 +793,7 @@
 <span class="sd">            model: Finalized Newton model the solver should run on.</span>
 <span class="sd">            solver_cfg: Implicit MPM solver configuration.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_solver</span> <span class="o">=</span> <span class="n">SolverImplicitMPM</span><span class="p">(</span>
-            <span class="n">model</span><span class="p">,</span>
-            <span class="n">_make_solver_config</span><span class="p">(</span><span class="n">solver_cfg</span><span class="p">),</span>
-            <span class="n">temporary_store</span><span class="o">=</span><span class="n">TemporaryStore</span><span class="p">(),</span>
-        <span class="p">)</span>
+        <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_solver</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_create_solver</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">solver_cfg</span><span class="p">)</span>
         <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_use_single_state</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="n">NewtonManager</span><span class="o">.</span><span class="n">_needs_collision_pipeline</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="bp">cls</span><span class="o">.</span><span class="n">_project_outside_colliders</span> <span class="o">=</span> <span class="n">solver_cfg</span><span class="o">.</span><span class="n">project_outside_colliders</span>
@@ -876,7 +882,7 @@ By The Isaac Lab Project Developers.
   
   <div class="footer-item">
     <p class="last-updated">
-  Last updated on Jul 16, 2026.
+  Last updated on Jul 17, 2026.
   <br/>
 </p>
   </div>
