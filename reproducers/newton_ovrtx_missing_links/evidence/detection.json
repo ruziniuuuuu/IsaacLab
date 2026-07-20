@@ -1,0 +1,7 @@
+{
+  "affected_env": 1,
+  "bad_silhouette_pixels": 399,
+  "max_rgb_channel_error": 211,
+  "persistence_frames": 3,
+  "persistent_bad_silhouette_pixels": 352
+}
