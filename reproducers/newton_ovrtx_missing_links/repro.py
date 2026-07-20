@@ -31,6 +31,11 @@ from torch.nn import functional as torch_functional
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
+
+try:
+    from isaaclab_tasks.utils import launch_simulation
+except ImportError:  # Isaac Lab develop moved the launcher into the core package.
+    from isaaclab.app import launch_simulation
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
@@ -48,7 +53,6 @@ from isaaclab_newton.sim.schemas import (
     NewtonMaterialPropertiesCfg,
 )
 from isaaclab_ov.renderers import OVRTXRendererCfg
-from isaaclab_tasks.utils import launch_simulation
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
 
