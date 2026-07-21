@@ -1,0 +1,40 @@
+{
+  "arguments": {
+    "bad_rgb_pixel_threshold": 100,
+    "consecutive_failure_frames": 3,
+    "device": "cuda:0",
+    "headless": true,
+    "height": 224,
+    "num_envs": 4,
+    "output_dir": "reproducers/newton_ovrtx_missing_links/evidence_v2_env0_ignored",
+    "ovrtx_cloning": false,
+    "reset_every": 0,
+    "rgb_threshold": 40,
+    "seed": 17,
+    "steps": 8,
+    "stop_on_failure": true,
+    "viewer": "newton",
+    "width": 298
+  },
+  "cuda_available": true,
+  "gpu": "NVIDIA GeForce RTX 5090 D v2",
+  "ovrtx_adapter": {
+    "honors_read_gpu_transforms_env": false,
+    "read_gpu_transforms_env": "0",
+    "source_path": "/workspace/isaaclab/source/isaaclab_ov/isaaclab_ov/renderers/ovrtx_renderer.py"
+  },
+  "packages": {
+    "isaaclab": "6.1.14",
+    "isaaclab-newton": "0.13.6",
+    "isaaclab-ov": "0.4.2",
+    "isaaclab-visualizers": "0.1.0",
+    "newton": "1.2.1",
+    "ovrtx": "0.3.0.312915",
+    "torch": "2.10.0+cu128",
+    "warp-lang": "1.13.0"
+  },
+  "platform": "Linux-6.17.0-40-generic-x86_64-with-glibc2.39",
+  "python": "3.12.13 (tags/v3.12.13-dirty:3bb231a, Apr 22 2026, 14:10:08) [GCC 11.4.0]",
+  "robot_usd": "/workspace/GalbotLab/reproducers/newton_ovrtx_missing_links/assets/galbot_one_golf/galbot_one_golf.usda",
+  "robot_usd_sha256": "4f690d1d14c98be04f44d2c213143875d9e3dd703a0971bb2cf3217b9ab5a6ef"
+}

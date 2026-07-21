@@ -13,20 +13,21 @@ and the Newton visualizer.
 from __future__ import annotations
 
 import argparse
-from collections import deque
 import hashlib
-from importlib.metadata import PackageNotFoundError, version
 import inspect
 import json
 import math
-from pathlib import Path
+import os
 import platform
 import sys
+from collections import deque
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Any
 
 import newton_usd_schemas  # noqa: F401  # Register Newton schemas before USD opens.
-from PIL import Image
 import torch
+from PIL import Image
 from torch.nn import functional as torch_functional
 
 import isaaclab.sim as sim_utils
@@ -36,12 +37,6 @@ try:
     from isaaclab_tasks.utils import launch_simulation
 except ImportError:  # Isaac Lab develop moved the launcher into the core package.
     from isaaclab.app import launch_simulation
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import CameraCfg
-from isaaclab.sim import SimulationCfg, UsdFileCfg
-from isaaclab.utils.configclass import configclass
 from isaaclab_newton.physics import (
     MJWarpSolverCfg,
     NewtonCfg,
@@ -53,16 +48,21 @@ from isaaclab_newton.sim.schemas import (
     NewtonMaterialPropertiesCfg,
 )
 from isaaclab_ov.renderers import OVRTXRendererCfg
+from isaaclab_ov.renderers import ovrtx_renderer as ovrtx_renderer_module
 from isaaclab_visualizers.newton import NewtonVisualizerCfg
 
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.envs import ManagerBasedEnv, ManagerBasedEnvCfg
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg
+from isaaclab.sim import SimulationCfg, UsdFileCfg
+from isaaclab.utils.configclass import configclass
 
 HERE = Path(__file__).resolve().parent
 ROBOT_USD = HERE / "assets" / "galbot_one_golf" / "galbot_one_golf.usda"
 BACKDROP_USD = HERE / "assets" / "backdrop.usda"
 CAMERA_PRIM_PATH = "{ENV_REGEX_NS}/Camera"
-VIEWER_CAMERA_PRIM_PATH = CAMERA_PRIM_PATH.replace(
-    "{ENV_REGEX_NS}", "/World/envs/env_.*"
-)
+VIEWER_CAMERA_PRIM_PATH = CAMERA_PRIM_PATH.replace("{ENV_REGEX_NS}", "/World/envs/env_.*")
 
 INITIAL_JOINT_POSITIONS = {
     "leg_joint1": 0.0,
@@ -70,20 +70,22 @@ INITIAL_JOINT_POSITIONS = {
     "leg_joint3": 0.0,
     "leg_joint4": 0.0,
     "leg_joint5": 0.0,
-    "left_arm_joint1": 1.910009444500404,
-    "left_arm_joint2": -1.460010959112611,
-    "left_arm_joint3": -0.4741512242415168,
-    "left_arm_joint4": -2.467893642457805,
-    "left_arm_joint5": -0.0016785070526536992,
-    "left_arm_joint6": -0.1221698763763522,
-    "left_arm_joint7": -0.09424494344765931,
-    "right_arm_joint1": -1.91,
-    "right_arm_joint2": 1.46,
-    "right_arm_joint3": 0.57,
-    "right_arm_joint4": 2.10,
+    # Keep the arms outstretched so every arm link is visible and missing
+    # geometry cannot hide behind the torso or another arm link.
+    "left_arm_joint1": 0.0,
+    "left_arm_joint2": 0.0,
+    "left_arm_joint3": 0.0,
+    "left_arm_joint4": 0.0,
+    "left_arm_joint5": 0.0,
+    "left_arm_joint6": 0.0,
+    "left_arm_joint7": 0.0,
+    "right_arm_joint1": 0.0,
+    "right_arm_joint2": 0.0,
+    "right_arm_joint3": 0.0,
+    "right_arm_joint4": 0.0,
     "right_arm_joint5": 0.0,
-    "right_arm_joint6": -0.71,
-    "right_arm_joint7": -0.03,
+    "right_arm_joint6": 0.0,
+    "right_arm_joint7": 0.0,
     "left_gripper_joint": 0.0,
     "right_gripper_joint": 0.0,
     "wheel1_joint": 0.0,
@@ -293,9 +295,7 @@ def make_env_cfg(args: argparse.Namespace) -> ManagerBasedEnvCfg:
         spawn=UsdFileCfg(
             usd_path=str(ROBOT_USD),
             variants={"Physics": "physics"},
-            articulation_props=NewtonArticulationRootPropertiesCfg(
-                self_collision_enabled=False
-            ),
+            articulation_props=NewtonArticulationRootPropertiesCfg(self_collision_enabled=False),
         ),
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, 0.0),
@@ -412,11 +412,19 @@ def write_run_info(args: argparse.Namespace) -> None:
     """Record versions, hardware, arguments, and the exact robot asset hash."""
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    adapter_source_path = inspect.getsourcefile(ovrtx_renderer_module)
+    adapter_source = ""
+    if adapter_source_path is not None:
+        adapter_source = Path(adapter_source_path).read_text(encoding="utf-8")
+    read_gpu_transforms_env = "ISAAC_LAB_OVRTX_READ_GPU_TRANSFORMS"
+    adapter_honors_env = read_gpu_transforms_env in adapter_source
+    if os.environ.get(read_gpu_transforms_env) is not None and not adapter_honors_env:
+        print(
+            f"[warning] {read_gpu_transforms_env} is set, but the installed "
+            "Isaac Lab OVRTX adapter does not reference it; the value has no effect."
+        )
     info = {
-        "arguments": {
-            key: str(value) if isinstance(value, Path) else value
-            for key, value in vars(args).items()
-        },
+        "arguments": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
         "packages": {
             name: package_version(name)
             for name in (
@@ -433,11 +441,14 @@ def write_run_info(args: argparse.Namespace) -> None:
         "platform": platform.platform(),
         "python": sys.version,
         "cuda_available": torch.cuda.is_available(),
-        "gpu": torch.cuda.get_device_name(args.device)
-        if torch.cuda.is_available()
-        else None,
+        "gpu": torch.cuda.get_device_name(args.device) if torch.cuda.is_available() else None,
         "robot_usd": str(ROBOT_USD),
         "robot_usd_sha256": hashlib.sha256(ROBOT_USD.read_bytes()).hexdigest(),
+        "ovrtx_adapter": {
+            "source_path": adapter_source_path,
+            "read_gpu_transforms_env": os.environ.get(read_gpu_transforms_env),
+            "honors_read_gpu_transforms_env": adapter_honors_env,
+        },
     }
     path = args.output_dir / "run_info.json"
     path.write_text(json.dumps(info, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -451,15 +462,9 @@ def reset_robot(env: ManagerBasedEnv) -> None:
     root_pose = robot.data.default_root_pose.torch.clone()
     root_pose[:, :3] += env.scene.env_origins
     robot.write_root_pose_to_sim_index(root_pose=root_pose)
-    robot.write_root_velocity_to_sim_index(
-        root_velocity=robot.data.default_root_vel.torch.clone()
-    )
-    robot.write_joint_position_to_sim_index(
-        position=robot.data.default_joint_pos.torch.clone()
-    )
-    robot.write_joint_velocity_to_sim_index(
-        velocity=robot.data.default_joint_vel.torch.clone()
-    )
+    robot.write_root_velocity_to_sim_index(root_velocity=robot.data.default_root_vel.torch.clone())
+    robot.write_joint_position_to_sim_index(position=robot.data.default_joint_pos.torch.clone())
+    robot.write_joint_velocity_to_sim_index(velocity=robot.data.default_joint_vel.torch.clone())
     robot.reset()
     env.scene.write_data_to_sim()
     env.sim.forward()
@@ -599,12 +604,8 @@ def simulation_state_metrics(env: ManagerBasedEnv) -> dict[str, float | bool]:
         and torch.all(torch.isfinite(joint_positions))
     )
     body_position_delta = torch.max(torch.abs(body_positions[1:] - body_positions[0:1]))
-    joint_position_delta = torch.max(
-        torch.abs(joint_positions[1:] - joint_positions[0:1])
-    )
-    quaternion_abs_dot = torch.abs(
-        torch.sum(body_quaternions[1:] * body_quaternions[0:1], dim=-1)
-    )
+    joint_position_delta = torch.max(torch.abs(joint_positions[1:] - joint_positions[0:1]))
+    quaternion_abs_dot = torch.abs(torch.sum(body_quaternions[1:] * body_quaternions[0:1], dim=-1))
     return {
         "all_finite": all_finite,
         "max_body_position_delta_m": float(body_position_delta.item()),
@@ -642,9 +643,7 @@ def save_capture(
     for env_index in range(rgb.shape[0]):
         rgb_to_image(rgb[env_index]).save(capture_dir / f"rgb_env_{env_index}.png")
         mask = (masks[env_index].to(torch.uint8) * 255).detach().cpu().numpy()
-        Image.fromarray(mask, mode="L").save(
-            capture_dir / f"silhouette_env_{env_index}.png"
-        )
+        Image.fromarray(mask, mode="L").save(capture_dir / f"silhouette_env_{env_index}.png")
     save_newton_viewer_frame(env, capture_dir / "newton_viewer.png")
     visibility = {"invisible_robot_prims": invisible_robot_prims(env.sim.stage)}
     (capture_dir / "stage_visibility.json").write_text(
@@ -669,8 +668,7 @@ def save_capture(
         "body_names": list(robot.body_names),
         "joint_names": list(robot.joint_names),
         "env_relative_body_positions": (
-            robot.data.body_pos_w.torch.detach().cpu()
-            - env.scene.env_origins.detach().cpu()[:, None, :]
+            robot.data.body_pos_w.torch.detach().cpu() - env.scene.env_origins.detach().cpu()[:, None, :]
         ).tolist(),
         "body_quaternions_wxyz": robot.data.body_quat_w.torch.detach().cpu().tolist(),
         "joint_positions": robot.data.joint_pos.torch.detach().cpu().tolist(),
@@ -693,10 +691,7 @@ def viewer_is_open(env: ManagerBasedEnv) -> bool:
 
     if not env.sim.visualizers:
         return True
-    return any(
-        visualizer.is_running() and not visualizer.is_closed
-        for visualizer in env.sim.visualizers
-    )
+    return any(visualizer.is_running() and not visualizer.is_closed for visualizer in env.sim.visualizers)
 
 
 def run(args: argparse.Namespace, env_cfg: ManagerBasedEnvCfg) -> bool:
@@ -715,9 +710,7 @@ def run(args: argparse.Namespace, env_cfg: ManagerBasedEnvCfg) -> bool:
         camera = env.scene["camera"]
         joint_ids, joint_names = robot.find_joints(MOTION_JOINTS, preserve_order=True)
         if joint_names != MOTION_JOINTS:
-            raise RuntimeError(
-                f"Robot joint mismatch: expected {MOTION_JOINTS}, got {joint_names}"
-            )
+            raise RuntimeError(f"Robot joint mismatch: expected {MOTION_JOINTS}, got {joint_names}")
         center = robot.data.default_joint_pos.torch[:, joint_ids].clone()
         root_pose_center = robot.data.default_root_pose.torch.clone()
         root_pose_center[:, :3] += env.scene.env_origins

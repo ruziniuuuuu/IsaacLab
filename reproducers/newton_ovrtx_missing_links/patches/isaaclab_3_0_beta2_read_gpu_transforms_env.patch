@@ -1,0 +1,20 @@
+diff --git a/source/isaaclab_ov/isaaclab_ov/renderers/ovrtx_renderer.py b/source/isaaclab_ov/isaaclab_ov/renderers/ovrtx_renderer.py
+--- a/source/isaaclab_ov/isaaclab_ov/renderers/ovrtx_renderer.py
++++ b/source/isaaclab_ov/isaaclab_ov/renderers/ovrtx_renderer.py
+@@ -103,0 +104,13 @@
++_READ_GPU_TRANSFORMS_ENV = "ISAAC_LAB_OVRTX_READ_GPU_TRANSFORMS"
++
++
++def _read_gpu_transforms_enabled() -> bool:
++    """Return whether OVRTX should read transforms from its GPU cache."""
++    default = "1" if _IS_OVRTX_0_3_0_OR_NEWER else "0"
++    value = os.environ.get(_READ_GPU_TRANSFORMS_ENV, default).strip()
++    if value not in {"0", "1"}:
++        raise ValueError(
++            f"Invalid value for environment variable `{_READ_GPU_TRANSFORMS_ENV}`: "
++            f"{value}. Expected 0 or 1."
++        )
++    return value == "1"
+@@ -222 +235 @@ class OVRTXRenderer(BaseRenderer):
+-            read_gpu_transforms=_IS_OVRTX_0_3_0_OR_NEWER,
++            read_gpu_transforms=_read_gpu_transforms_enabled(),

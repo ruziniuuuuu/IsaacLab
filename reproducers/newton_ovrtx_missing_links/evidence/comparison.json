@@ -1,0 +1,42 @@
+{
+  "comparison": "same environment, camera, pose, and step; effective CPU transform read versus ignored environment variable/GPU transform read",
+  "failure_step": 7,
+  "rgb_max_channel_difference": {
+    "env_0": {
+      "max_channel_error": 201,
+      "pixels_gt_40": 245,
+      "pixels_gt_80": 154,
+      "pixels_gt_120": 100
+    },
+    "env_1": {
+      "max_channel_error": 90,
+      "pixels_gt_40": 26,
+      "pixels_gt_80": 1,
+      "pixels_gt_120": 0
+    },
+    "env_2": {
+      "max_channel_error": 218,
+      "pixels_gt_40": 787,
+      "pixels_gt_80": 600,
+      "pixels_gt_120": 408
+    },
+    "env_3": {
+      "max_channel_error": 218,
+      "pixels_gt_40": 556,
+      "pixels_gt_80": 471,
+      "pixels_gt_120": 397
+    }
+  },
+  "trials": {
+    "environment_variable_ignored": {
+      "adapter_honors_environment_variable": false,
+      "read_gpu_transforms_actual": true,
+      "result": "reproduced at step 7"
+    },
+    "environment_variable_effective": {
+      "adapter_honors_environment_variable": true,
+      "read_gpu_transforms_actual": false,
+      "result": "0 reproductions in 3 independent 1000-step processes"
+    }
+  }
+}
