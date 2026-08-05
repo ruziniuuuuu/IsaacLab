@@ -24,6 +24,7 @@ import logging
 import math
 import os
 import re
+from collections.abc import Sequence
 from itertools import compress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, cast
@@ -93,7 +94,8 @@ from .ovrtx_renderer_kernels import (
     sync_newton_transforms_kernel,
 )
 from .ovrtx_usd import (
-    build_render_product_as_string,
+    RenderProductUsdSpec,
+    build_render_products_as_string,
     create_scene_partition_attributes,
     export_stage_to_string,
 )
@@ -294,8 +296,17 @@ def _resolve_clone_plan(num_envs: int) -> ClonePlan:
 class OVRTXRenderData:
     """OVRTX-specific RenderData. Holds warp output buffers sized from :class:`CameraRenderSpec`."""
 
-    def __init__(self, spec: CameraRenderSpec, device):
+    def __init__(self, spec: CameraRenderSpec, device: str, render_product_path: str):
         """Create render data from a camera render specification."""
+        self.spec = spec
+        self.render_product_path = render_product_path
+        self.camera_rel_path = spec.camera_path_relative_to_env_0
+        self.camera_xform_binding = None
+        self.camera_xform_query = None
+        self.camera_paths_list = None
+        self.positions: ProxyArray | None = None
+        self.orientations: ProxyArray | None = None
+        self.intrinsics: ProxyArray | None = None
         self.width = spec.cfg.width
         self.height = spec.cfg.height
         self.num_envs = spec.num_instances
@@ -369,8 +380,12 @@ class OVRTXRenderer(BaseRenderer):
 
     def __init__(self, cfg: OVRTXRendererCfg):
         self.cfg = cfg
+        if cfg.warmup_frames < 0:
+            raise ValueError("OVRTXRendererCfg.warmup_frames must be non-negative.")
+        self._warmup_remaining = cfg.warmup_frames
         self._device = "cuda:0"  # default; overridden by create_render_data(spec)
         self._render_product_paths = []
+        self._render_data: list[OVRTXRenderData] = []
         # Shared by both paths. The legacy-only binding handles that pair with these live in
         # _init_fields_legacy instead; the ovstage path drives the same offsets and counts
         # through its stage queries.
@@ -381,7 +396,6 @@ class OVRTXRenderer(BaseRenderer):
         self._particle_visual_counts: list[int] = []
         self._initialized_scene = False
         self._exported_usd_string: str | None = None
-        self._camera_rel_path: str | None = None
         self._output_id_color_buffers: dict[str, wp.array] = {}
         self._clone_plan: ClonePlan | None = None
 
@@ -465,6 +479,63 @@ class OVRTXRenderer(BaseRenderer):
             keep_env_roots=not self._use_ovstage,
         )
 
+    def _validate_render_data(self, render_data: Sequence[OVRTXRenderData]) -> int:
+        """Validate the complete logical-camera set and return its environment count."""
+        if not render_data:
+            raise RuntimeError("OVRTX requires at least one registered camera before rendering.")
+        num_envs = render_data[0].num_envs
+        if any(item.num_envs != num_envs for item in render_data):
+            raise ValueError("All cameras sharing an OVRTX renderer must have the same environment count.")
+        devices = {item.spec.device for item in render_data}
+        if len(devices) != 1:
+            raise ValueError(f"All cameras sharing an OVRTX renderer must use one device; got {sorted(devices)}.")
+        paths = tuple(item.render_product_path for item in render_data)
+        if len(set(paths)) != len(paths):
+            raise ValueError("OVRTX RenderProduct paths must be unique per logical camera.")
+        return num_envs
+
+    @staticmethod
+    def _validate_camera_paths(render_data: Sequence[OVRTXRenderData]) -> None:
+        """Require every registered camera to resolve below environment zero."""
+        env_0_prefix = "/World/envs/env_0/"
+        for item in render_data:
+            if not item.spec.camera_prim_paths:
+                raise RuntimeError(f"No camera prims resolved for {item.render_product_path}.")
+            first_camera_path = item.spec.camera_prim_paths[0]
+            if not first_camera_path.startswith(env_0_prefix):
+                raise RuntimeError(f"Expected camera prim under '{env_0_prefix}', got '{first_camera_path}'")
+
+    @staticmethod
+    def _camera_paths(render_data: OVRTXRenderData, num_envs: int) -> list[str]:
+        """Return tiled camera prim paths for one logical camera."""
+        return [f"/World/envs/env_{env_id}/{render_data.camera_rel_path}" for env_id in range(num_envs)]
+
+    @staticmethod
+    def _render_product_usd_spec(render_data: OVRTXRenderData) -> RenderProductUsdSpec:
+        """Translate one renderer-owned camera registration to USD authoring inputs."""
+        data_types = tuple(render_data.data_types)
+        if render_data.spec.cfg.isp_cfg is not None and "rgb_hdr" not in data_types:
+            data_types = (*data_types, "rgb_hdr")
+        return RenderProductUsdSpec(
+            name=render_data.render_product_path.rsplit("/", 1)[-1],
+            width=render_data.width,
+            height=render_data.height,
+            num_envs=render_data.num_envs,
+            data_types=data_types,
+            camera_rel_path=render_data.camera_rel_path,
+            minimal_mode=_resolve_rtx_minimal_mode(list(data_types)),
+        )
+
+    def _write_cached_camera_transforms(self, render_data: Sequence[OVRTXRenderData]) -> None:
+        """Publish camera states cached while deferred stage initialization was pending."""
+        for item in render_data:
+            if item.positions is None or item.orientations is None or item.intrinsics is None:
+                raise RuntimeError(f"Camera state was not prepared for {item.render_product_path}.")
+            if self._use_ovstage:
+                self._update_camera_ovstage(item, item.positions, item.orientations, item.intrinsics)
+            else:
+                self._update_camera_legacy(item, item.positions, item.orientations, item.intrinsics)
+
     def _init_fields_legacy(self) -> None:
         """Initialize the legacy-path instance fields.
 
@@ -473,93 +544,63 @@ class OVRTXRenderer(BaseRenderer):
         ``UsdGeom.Points`` seeding flag. State shared by both paths (``_object_newton_indices``, the
         particle offset/count lists) stays in :meth:`__init__`.
         """
-        self._camera_xform_binding = None
         self._object_xform_binding = None
         self._deformable_points_binding = None
         self._particle_points_binding = None
         self._particle_workaround_applied = False
 
-    def _initialize_from_spec_legacy(self, spec: CameraRenderSpec):
-        """Initialize the OVRTX renderer with internal environment cloning.
-
-        Args:
-            spec: Tiled camera description (resolution, paths, data types).
-        """
-        width = spec.cfg.width
-        height = spec.cfg.height
-        num_envs = spec.num_instances
-        data_types = spec.cfg.data_types if spec.cfg.data_types else ["rgb"]
-        if spec.cfg.isp_cfg is not None and "rgb_hdr" not in data_types:
-            data_types = [*data_types, "rgb_hdr"]
-
-        env_0_prefix = "/World/envs/env_0/"
-        first_cam_path = spec.camera_prim_paths[0]
-        if not first_cam_path.startswith(env_0_prefix):
-            raise RuntimeError(f"Expected camera prim under '{env_0_prefix}', got '{first_cam_path}'")
-        self._camera_rel_path = spec.camera_path_relative_to_env_0
-
-        logger.info("Injecting camera definitions...")
-
+    def _initialize_from_render_data_legacy(self, render_data: Sequence[OVRTXRenderData]) -> None:
+        """Initialize one legacy OVRTX stage for all registered logical cameras."""
+        num_envs = self._validate_render_data(render_data)
+        self._validate_camera_paths(render_data)
         if self._exported_usd_string is None:
             raise RuntimeError("Expected an exported USD string from stage")
 
-        render_product_string, render_product_path = build_render_product_as_string(
-            width=width,
-            height=height,
-            num_envs=num_envs,
-            data_types=data_types,
-            minimal_mode=_resolve_rtx_minimal_mode(data_types),
-            camera_rel_path=self._camera_rel_path,
+        logger.info("Injecting %d camera RenderProducts...", len(render_data))
+        render_product_string, render_product_paths = build_render_products_as_string(
+            tuple(self._render_product_usd_spec(item) for item in render_data)
         )
-        self._render_product_paths.append(render_product_path)
+        if tuple(self._render_product_paths) != render_product_paths:
+            raise RuntimeError("Reserved OVRTX RenderProduct paths disagree with authored USD paths.")
 
         combined_usd_string = self._exported_usd_string + "\n\n" + render_product_string
-        self._exported_usd_string = None  # Free memory
-
-        # If temp_usd_dir is set, write the combined USD stage to a temporary file.
+        self._exported_usd_string = None
         if self.cfg.temp_usd_dir is not None:
             _write_file(Path(self.cfg.temp_usd_dir), "ovrtx_renderer_stage.usda", combined_usd_string)
 
-        logger.info("Loading USD into OvRTX...")
+        logger.info("Loading USD into OVRTX...")
         self._renderer.open_usd_from_string(combined_usd_string)
-        logger.info("OVRTX loaded USD from string successfully")
-
-        camera_paths = [f"/World/envs/env_{i}/{self._camera_rel_path}" for i in range(num_envs)]
         if num_envs > 1:
             self._clone_sources_in_ovrtx()
             self._update_scene_partitions_after_clone(num_envs)
-            # OVRTX 0.4 keeps the initial Fabric camera relationship after clone_usd creates the remaining
-            # cameras. Rewrite it so the RenderProduct includes every camera in its tiled output.
+
+        for item in render_data:
+            camera_paths = self._camera_paths(item, num_envs)
             self._renderer.write_array_attribute(
-                prim_paths=[render_product_path],
+                prim_paths=[item.render_product_path],
                 attribute_name="camera",
                 tensors=[camera_paths],
             )
+            item.camera_xform_binding = self._renderer.bind_attribute(
+                prim_paths=camera_paths,
+                attribute_name="omni:xform",
+                semantic=Semantic.XFORM_MAT4x4,
+                prim_mode=PrimMode.EXISTING_ONLY,
+            )
+            self._renderer.write_attribute(
+                prim_paths=camera_paths,
+                attribute_name="omni:resetXformStack",
+                tensor=np.full(num_envs, True, dtype=np.bool_),
+            )
+            if item.camera_xform_binding is None:
+                raise RuntimeError(f"Failed to bind camera transforms for {item.render_product_path}.")
 
         self._initialized_scene = True
-
-        self._camera_xform_binding = self._renderer.bind_attribute(
-            prim_paths=camera_paths,
-            attribute_name="omni:xform",
-            semantic=Semantic.XFORM_MAT4x4,
-            prim_mode=PrimMode.EXISTING_ONLY,
-        )
-
-        # OVRTX requires omni:resetXformStack on cameras for correct world transform binding
-        self._renderer.write_attribute(
-            prim_paths=camera_paths,
-            attribute_name="omni:resetXformStack",
-            tensor=np.full(num_envs, True, dtype=np.bool_),
-        )
-
-        if self._camera_xform_binding is not None:
-            logger.info("Camera binding created successfully")
-        else:
-            raise RuntimeError("Camera binding is None — cannot render without a valid camera binding")
-
         self._setup_xform_bindings()
         self._setup_deformable_bindings(num_envs)
         self._setup_particle_bindings()
+        self._write_cached_camera_transforms(render_data)
+        logger.info("OVRTX loaded USD with %d camera RenderProducts", len(render_data))
 
     def _clone_sources_in_ovrtx(self):
         """Clone sources in OVRTX using the scene :class:`~isaaclab.cloner.ClonePlan`."""
@@ -634,7 +675,8 @@ class OVRTXRenderer(BaseRenderer):
         logger.info("Writing scene partitions for %d environments...", num_envs)
         partition_tokens = [f"env_{i}" for i in range(num_envs)]
         env_prim_paths = [f"/World/envs/env_{i}" for i in range(num_envs)]
-        camera_prim_paths = [f"/World/envs/env_{i}/{self._camera_rel_path}" for i in range(num_envs)]
+        camera_prim_paths = [path for item in self._render_data for path in self._camera_paths(item, num_envs)]
+        camera_partition_tokens = partition_tokens * len(self._render_data)
 
         self._renderer.write_attribute(
             env_prim_paths,
@@ -647,7 +689,7 @@ class OVRTXRenderer(BaseRenderer):
         self._renderer.write_attribute(
             camera_prim_paths,
             "omni:scenePartition",
-            partition_tokens,
+            camera_partition_tokens,
             semantic=Semantic.TOKEN_STRING,
         )
         logger.info("Written omni:scenePartition to %d cameras", num_envs)
@@ -677,7 +719,8 @@ class OVRTXRenderer(BaseRenderer):
         object_paths = []
         newton_indices = []
         for idx, path in enumerate(all_body_paths):
-            if "/World/envs/" in path and self._camera_rel_path not in path and "GroundPlane" not in path:
+            is_camera = any(item.camera_rel_path in path for item in self._render_data)
+            if "/World/envs/" in path and not is_camera and "GroundPlane" not in path:
                 object_paths.append(path)
                 newton_indices.append(idx)
 
@@ -844,13 +887,17 @@ class OVRTXRenderer(BaseRenderer):
     def create_render_data(self, spec: CameraRenderSpec) -> OVRTXRenderData:
         """Create OVRTX-specific RenderData with GPU buffers.
 
-        Performs OVRTX initialization (stage export, USD load, bindings) on first call,
-        matching the interface of Isaac RTX and Newton Warp which need no separate initialize().
+        Registration remains side-effect free so every camera sharing this backend can reserve
+        its own RenderProduct before the scene is loaded on the first render.
         """
+        if self._initialized_scene:
+            raise RuntimeError("Cannot register an OVRTX camera after scene rendering has started.")
         self._device = spec.device
-        if not self._initialized_scene:
-            self._initialize_from_spec(spec)
-        return OVRTXRenderData(spec, self._device)
+        render_product_path = f"/Render/RenderProduct_{len(self._render_data)}"
+        render_data = OVRTXRenderData(spec, self._device, render_product_path)
+        self._render_data.append(render_data)
+        self._render_product_paths.append(render_product_path)
+        return render_data
 
     def set_outputs(self, render_data: OVRTXRenderData, output_data: dict[str, ProxyArray]) -> None:
         """Register pre-allocated warp output buffers for rendering.
@@ -1024,8 +1071,8 @@ class OVRTXRenderer(BaseRenderer):
             inputs=[positions, converted_wp, camera_transforms],
             device=self._device,
         )
-        if self._camera_xform_binding is not None:
-            with self._camera_xform_binding.map(device=Device.CUDA, device_id=self._device_id) as attr_mapping:
+        if render_data.camera_xform_binding is not None:
+            with render_data.camera_xform_binding.map(device=Device.CUDA, device_id=self._device_id) as attr_mapping:
                 wp_transforms_view = wp.from_dlpack(attr_mapping.tensor, dtype=wp.mat44d)
                 wp.copy(wp_transforms_view, camera_transforms)
 
@@ -1386,31 +1433,18 @@ class OVRTXRenderer(BaseRenderer):
                 tiled_motion_vectors_data = wp.from_dlpack(mapping)
                 self._launch_extract_all_tiles(render_data, tiled_motion_vectors_data, output_buffers["motion_vectors"])
 
-    def _render_legacy(self, render_data: OVRTXRenderData) -> None:
-        """Render the scene into the provided RenderData."""
+    def _render_legacy_many(self, render_data: Sequence[OVRTXRenderData], delta_time: float) -> None:
+        """Render all logical cameras in one OVRTX sensor step."""
         if not self._initialized_scene:
             raise RuntimeError("Scene not initialized. Call initialize() first.")
-        if self._renderer is None or len(self._render_product_paths) == 0:
+        if self._renderer is None or not render_data:
             return
+        render_product_paths = {item.render_product_path for item in render_data}
         products = self._renderer.step(
-            render_products=set(self._render_product_paths),
-            delta_time=1.0 / 60.0,
+            render_products=render_product_paths,
+            delta_time=delta_time,
         )
-        product_path = self._render_product_paths[0]
-        if product_path in products and len(products[product_path].frames) > 0:
-            self._process_render_frame(
-                render_data,
-                products[product_path].frames[0],
-                render_data.warp_buffers,
-            )
-
-        # Post-render PPISP: HDR scene-linear → LDR RGBA. Source/destination
-        # buffers are the same warp buffer map used by extraction.
-        if render_data.ppisp_pipeline is not None:
-            render_data.ppisp_pipeline.apply(
-                render_data.warp_buffers[str(RenderBufferKind.RGB_HDR)],
-                render_data.warp_buffers[str(RenderBufferKind.RGBA)],
-            )
+        self._route_render_products(render_data, products)
 
     def _close_legacy(self) -> None:
         """Release the renderer's tensor bindings and stage. See :meth:`close`."""
@@ -1425,8 +1459,9 @@ class OVRTXRenderer(BaseRenderer):
                 if "destroyed" not in str(e).lower():
                     logger.warning("Error unbinding %s: %s", name, e)
 
-        _safe_unbind(self._camera_xform_binding, "camera transforms")
-        self._camera_xform_binding = None
+        for index, item in enumerate(getattr(self, "_render_data", ())):
+            _safe_unbind(getattr(item, "camera_xform_binding", None), f"camera {index} transforms")
+            item.camera_xform_binding = None
         _safe_unbind(self._object_xform_binding, "object transforms")
         self._object_xform_binding = None
         _safe_unbind(self._deformable_points_binding, "deformable points")
@@ -1449,6 +1484,8 @@ class OVRTXRenderer(BaseRenderer):
             self._renderer = None
 
         self._render_product_paths.clear()
+        if hasattr(self, "_render_data"):
+            self._render_data.clear()
         self._output_id_color_buffers.clear()
         self._initialized_scene = False
 
@@ -1462,11 +1499,11 @@ class OVRTXRenderer(BaseRenderer):
         else:
             self._init_fields_legacy()
 
-    def _initialize_from_spec(self, spec: CameraRenderSpec) -> None:
+    def _initialize_from_render_data(self, render_data: Sequence[OVRTXRenderData]) -> None:
         if self._use_ovstage:
-            self._initialize_from_spec_ovstage(spec)
+            self._initialize_from_render_data_ovstage(render_data)
         else:
-            self._initialize_from_spec_legacy(spec)
+            self._initialize_from_render_data_legacy(render_data)
 
     def _setup_xform_bindings(self) -> None:
         if self._use_ovstage:
@@ -1488,6 +1525,8 @@ class OVRTXRenderer(BaseRenderer):
 
     def update_transforms(self) -> None:
         """Sync transforms to OVRTX."""
+        if not self._initialized_scene:
+            self._initialize_from_render_data(tuple(self._render_data))
         if self._use_ovstage:
             self._update_transforms_ovstage()
         else:
@@ -1495,6 +1534,8 @@ class OVRTXRenderer(BaseRenderer):
 
     def update_geometries(self) -> None:
         """Sync geometries to OVRTX."""
+        if not self._initialized_scene:
+            self._initialize_from_render_data(tuple(self._render_data))
         if self._use_ovstage:
             self._update_geometries_ovstage()
         else:
@@ -1508,17 +1549,77 @@ class OVRTXRenderer(BaseRenderer):
         intrinsics: ProxyArray,
     ) -> None:
         """Update camera transforms in OVRTX."""
+        render_data.positions = positions
+        render_data.orientations = orientations
+        render_data.intrinsics = intrinsics
+        if not self._initialized_scene:
+            return
         if self._use_ovstage:
             self._update_camera_ovstage(render_data, positions, orientations, intrinsics)
         else:
             self._update_camera_legacy(render_data, positions, orientations, intrinsics)
 
     def render(self, render_data: OVRTXRenderData) -> None:
-        """Render the scene into the provided RenderData."""
+        """Render the complete registered set, including ``render_data``."""
+        if not any(item is render_data for item in self._render_data):
+            raise ValueError("Render data is not registered with this OVRTX renderer.")
+        self.render_many(tuple(self._render_data), 1.0 / 60.0)
+
+    def requires_complete_render_set(self) -> bool:
+        """OVRTX discards histories for RenderProducts omitted from a sensor step."""
+        return True
+
+    def render_many(self, render_data: Sequence[OVRTXRenderData], delta_time: float) -> None:
+        """Render every logical camera atomically and route outputs by RenderProduct."""
+        render_data = tuple(render_data)
+        if len(render_data) != len(self._render_data) or any(
+            requested is not registered for requested, registered in zip(render_data, self._render_data, strict=True)
+        ):
+            raise RuntimeError("OVRTX must render every registered camera in registration order.")
+        if not self._initialized_scene:
+            self._initialize_from_render_data(tuple(self._render_data))
+        if self._warmup_remaining:
+            self._warm_up_render_products(render_data, self._warmup_remaining, delta_time)
         if self._use_ovstage:
-            self._render_ovstage(render_data)
+            self._render_ovstage_many(render_data, delta_time)
         else:
-            self._render_legacy(render_data)
+            self._render_legacy_many(render_data, delta_time)
+
+    def _warm_up_render_products(
+        self,
+        render_data: Sequence[OVRTXRenderData],
+        frame_count: int,
+        delta_time: float,
+    ) -> None:
+        """Converge RTPT for the complete product set without publishing early frames."""
+        render_product_paths = {item.render_product_path for item in render_data}
+        for _ in range(frame_count):
+            if self._use_ovstage:
+                self._stage.advance_write_floor(ordinal=self._current_ordinal).wait()
+                self._renderer.step(
+                    render_products=render_product_paths,
+                    delta_time=delta_time,
+                    ordinal=self._current_ordinal,
+                )
+                self._current_ordinal += 1
+            else:
+                self._renderer.step(render_products=render_product_paths, delta_time=delta_time)
+        self._warmup_remaining = 0
+
+    def _route_render_products(self, render_data: Sequence[OVRTXRenderData], products: Any) -> None:
+        """Extract each product frame into the buffers owned by its logical camera."""
+        for item in render_data:
+            if item.render_product_path in products:
+                product = products[item.render_product_path]
+            else:
+                product = None
+            if product is not None and product.frames:
+                self._process_render_frame(item, product.frames[0], item.warp_buffers)
+            if item.ppisp_pipeline is not None:
+                item.ppisp_pipeline.apply(
+                    item.warp_buffers[str(RenderBufferKind.RGB_HDR)],
+                    item.warp_buffers[str(RenderBufferKind.RGBA)],
+                )
 
     def cleanup(self, render_data: OVRTXRenderData | None) -> None:
         """Release the render data's buffers. See :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.cleanup`.
@@ -1532,6 +1633,12 @@ class OVRTXRenderer(BaseRenderer):
         render_data.warp_buffers.clear()
         render_data.renderer_info.clear()
         render_data.ppisp_pipeline = None
+
+    def reset(self) -> None:
+        """Clear all RenderProduct histories and rearm the quality warm-up."""
+        if self._initialized_scene and self._renderer is not None:
+            self._renderer.reset()
+        self._warmup_remaining = self.cfg.warmup_frames
 
     def close(self) -> None:
         """Release the shared stage state. See :meth:`~isaaclab.renderers.base_renderer.BaseRenderer.close`."""
@@ -1558,8 +1665,6 @@ class OVRTXRenderer(BaseRenderer):
         self._stage_paths = None
         self._ovstage_exit_stack: contextlib.ExitStack | None = None
         self._current_ordinal: int = 0
-        self._camera_xform_query = None
-        self._camera_paths_list = None
         self._object_xform_query = None
         self._object_paths_list = None
         self._deformable_points_query = None
@@ -1568,52 +1673,28 @@ class OVRTXRenderer(BaseRenderer):
         self._particle_paths_list = None
         self._env_root_xforms: np.ndarray | None = None
 
-    def _initialize_from_spec_ovstage(self, spec: CameraRenderSpec) -> None:
-        """Initialize the OVRTX renderer with internal environment cloning (ovstage path).
-
-        Args:
-            spec: Tiled camera description (resolution, paths, data types).
-        """
-        width = spec.cfg.width
-        height = spec.cfg.height
-        num_envs = spec.num_instances
-        data_types = spec.cfg.data_types if spec.cfg.data_types else ["rgb"]
-        if spec.cfg.isp_cfg is not None and "rgb_hdr" not in data_types:
-            data_types = [*data_types, "rgb_hdr"]
-
-        env_0_prefix = "/World/envs/env_0/"
-        first_cam_path = spec.camera_prim_paths[0]
-        if not first_cam_path.startswith(env_0_prefix):
-            raise RuntimeError(f"Expected camera prim under '{env_0_prefix}', got '{first_cam_path}'")
-        self._camera_rel_path = spec.camera_path_relative_to_env_0
-
-        logger.info("Injecting camera definitions...")
-
+    def _initialize_from_render_data_ovstage(self, render_data: Sequence[OVRTXRenderData]) -> None:
+        """Initialize one ovstage-backed scene for all registered logical cameras."""
+        num_envs = self._validate_render_data(render_data)
+        self._validate_camera_paths(render_data)
         if self._exported_usd_string is None:
             raise RuntimeError("Expected an exported USD string from stage")
 
-        render_product_string, render_product_path = build_render_product_as_string(
-            width=width,
-            height=height,
-            num_envs=num_envs,
-            data_types=data_types,
-            minimal_mode=_resolve_rtx_minimal_mode(data_types),
-            camera_rel_path=self._camera_rel_path,
+        logger.info("Injecting %d camera RenderProducts...", len(render_data))
+        render_product_string, render_product_paths = build_render_products_as_string(
+            tuple(self._render_product_usd_spec(item) for item in render_data)
         )
-        self._render_product_paths.append(render_product_path)
-
+        if tuple(self._render_product_paths) != render_product_paths:
+            raise RuntimeError("Reserved OVRTX RenderProduct paths disagree with authored USD paths.")
         combined_usd_string = self._exported_usd_string + "\n\n" + render_product_string
-        self._exported_usd_string = None  # Free memory
-
-        # If temp_usd_dir is set, write the combined USD stage to a temporary file.
+        self._exported_usd_string = None
         if self.cfg.temp_usd_dir is not None:
             _write_file(Path(self.cfg.temp_usd_dir), "ovrtx_renderer_stage.usda", combined_usd_string)
 
-        logger.info("Loading USD into OvRTX via ovstage...")
+        logger.info("Loading USD into OVRTX via ovstage...")
         self._ovstage_exit_stack = contextlib.ExitStack()
         self._stage = self._ovstage_exit_stack.enter_context(ovstage.Stage("isaaclab.ovrtx"))
         self._stage_paths = self._ovstage_exit_stack.enter_context(ovstage.PathDictionary(self._stage))
-        # Ordinal 0 is the empty/unwritten state in ovstage; the first write must use >= 1.
         self._current_ordinal += 1
         ovstage.population.open_usd_from_string(
             self._stage,
@@ -1626,55 +1707,45 @@ class OVRTXRenderer(BaseRenderer):
             self._clone_sources_ovstage()
             self._update_scene_partitions_after_clone_ovstage(num_envs)
 
-        self._initialized_scene = True
+        for item in render_data:
+            camera_paths = self._camera_paths(item, num_envs)
+            render_product_paths_list = self._stage_paths.create_path_list_from_strings([item.render_product_path])
+            with self._stage.query_from_path_list(render_product_paths_list) as render_product_query:
+                camera_attribute = self._stage_paths.intern_token("camera")
+                camera_target_ids = np.array(
+                    [self._stage_paths.intern_path(path) for path in camera_paths], dtype=np.uint64
+                )
+                self._stage.write_attribute(
+                    render_product_query,
+                    camera_attribute,
+                    ordinal=self._current_ordinal,
+                    tensors=camera_target_ids,
+                    is_array=True,
+                    semantic=ovstage.AttributeSemantic.RELATIONSHIP_PATH_ID,
+                ).wait()
+            self._stage_paths.destroy_path_list(render_product_paths_list)
 
-        camera_paths = [f"/World/envs/env_{i}/{self._camera_rel_path}" for i in range(num_envs)]
-
-        # Re-author the RenderProduct's camera relationship after clone. ``stage.clone`` recreates the per-env
-        # cameras, so the RenderProduct must be pointed at the freshly-interned camera path ids to discover every
-        # camera for tiled rendering.
-        render_product_paths = self._stage_paths.create_path_list_from_strings([render_product_path])
-        with self._stage.query_from_path_list(render_product_paths) as render_product_query:
-            camera_attribute = self._stage_paths.intern_token("camera")
-            camera_target_ids = np.array(
-                [self._stage_paths.intern_path(path) for path in camera_paths], dtype=np.uint64
-            )
+            item.camera_paths_list = self._stage_paths.create_path_list_from_strings(camera_paths)
+            item.camera_xform_query = self._stage.query_from_path_list(item.camera_paths_list)
+            if item.camera_xform_query is None:
+                raise RuntimeError(f"Failed to create camera query for {item.render_product_path}.")
             self._stage.write_attribute(
-                render_product_query,
-                camera_attribute,
+                item.camera_xform_query,
+                "omni:resetXformStack",
                 ordinal=self._current_ordinal,
-                tensors=camera_target_ids,
-                is_array=True,
-                semantic=ovstage.AttributeSemantic.RELATIONSHIP_PATH_ID,
+                tensors=np.full(num_envs, True, dtype=np.bool_),
+                is_array=False,
             ).wait()
-        self._stage_paths.destroy_path_list(render_product_paths)
 
-        self._camera_paths_list = self._stage_paths.create_path_list_from_strings(camera_paths)
-        self._camera_xform_query = self._stage.query_from_path_list(self._camera_paths_list)
-
-        if self._camera_xform_query is None:
-            raise RuntimeError("Camera query is None — cannot render without a valid camera query")
-        logger.info("Camera query created successfully")
-
-        # Resetting the xform stack makes omni:xform the absolute world transform, preventing
-        # ancestor transforms (env root, asset root) from compounding on top of the camera pose.
-        self._stage.write_attribute(
-            self._camera_xform_query,
-            "omni:resetXformStack",
-            ordinal=self._current_ordinal,
-            tensors=np.full(num_envs, True, dtype=np.bool_),
-            is_array=False,
-        ).wait()
-
+        self._initialized_scene = True
         self._setup_xform_bindings_ovstage()
         self._setup_deformable_bindings_ovstage(num_envs)
         self._setup_particle_bindings_ovstage()
+        self._write_cached_camera_transforms(render_data)
 
-        # Commit all init-time writes then attach. attach_ovstage happens last so the renderer
-        # immediately sees the fully-configured scene on its first step.
         self._stage.advance_write_floor(ordinal=self._current_ordinal).wait()
         self._renderer.attach_ovstage(self._stage)
-        logger.info("OVRTX loaded USD from string successfully via ovstage")
+        logger.info("OVRTX loaded USD with %d camera RenderProducts via ovstage", len(render_data))
         self._current_ordinal += 1
 
     def _capture_env_root_xforms_ovstage(self, stage: Any, num_envs: int) -> None:
@@ -1770,7 +1841,7 @@ class OVRTXRenderer(BaseRenderer):
         """Update scene partition attributes on cloned environments and cameras (ovstage path)."""
         logger.info("Writing scene partitions for %d environments...", num_envs)
         env_prim_paths = [f"/World/envs/env_{i}" for i in range(num_envs)]
-        camera_prim_paths = [f"/World/envs/env_{i}/{self._camera_rel_path}" for i in range(num_envs)]
+        camera_prim_paths = [path for item in self._render_data for path in self._camera_paths(item, num_envs)]
         # TOKEN_ID semantic tells ovstage the uint64 values are interned string tokens, not raw integers;
         # the renderer resolves them back to the original "env_N" strings for scene-partition lookup.
         token_ids = np.array([self._stage_paths.intern_token(f"env_{i}") for i in range(num_envs)], dtype=np.uint64)
@@ -1795,7 +1866,7 @@ class OVRTXRenderer(BaseRenderer):
             cam_query,
             "omni:scenePartition",
             ordinal=self._current_ordinal,
-            tensors=token_ids,
+            tensors=np.tile(token_ids, len(self._render_data)),
             is_array=False,
             semantic=ovstage.AttributeSemantic.TOKEN_ID,
         ).wait()
@@ -1828,7 +1899,8 @@ class OVRTXRenderer(BaseRenderer):
         object_paths = []
         newton_indices = []
         for idx, path in enumerate(all_body_paths):
-            if "/World/envs/" in path and self._camera_rel_path not in path and "GroundPlane" not in path:
+            is_camera = any(item.camera_rel_path in path for item in self._render_data)
+            if "/World/envs/" in path and not is_camera and "GroundPlane" not in path:
                 object_paths.append(path)
                 newton_indices.append(idx)
 
@@ -2132,11 +2204,11 @@ class OVRTXRenderer(BaseRenderer):
             inputs=[positions, converted_wp, camera_transforms],
             device=self._device,
         )
-        if self._camera_xform_query is not None:
+        if render_data.camera_xform_query is not None:
             # Synchronize then copy to CPU numpy: same lanes=16 constraint as object transforms above.
             wp.synchronize_device(self._device)
             self._stage.write_attribute(
-                self._camera_xform_query,
+                render_data.camera_xform_query,
                 "omni:xform",
                 ordinal=self._current_ordinal,
                 tensors=_xform_tensor_from_numpy(camera_transforms.numpy().reshape(-1, 4, 4)),
@@ -2144,35 +2216,22 @@ class OVRTXRenderer(BaseRenderer):
                 semantic=ovstage.AttributeSemantic.MATRIX,
             ).wait()
 
-    def _render_ovstage(self, render_data: OVRTXRenderData) -> None:
+    def _render_ovstage_many(self, render_data: Sequence[OVRTXRenderData], delta_time: float) -> None:
         if not self._initialized_scene:
             raise RuntimeError("Scene not initialized. Call initialize() first.")
-        if self._renderer is None or len(self._render_product_paths) == 0:
+        if self._renderer is None or not render_data:
             return
         # Commit all per-frame writes (transforms, geometries, camera) then step.
         # advance_write_floor must precede step — the renderer rejects ordinal > write_floor.
         self._stage.advance_write_floor(ordinal=self._current_ordinal).wait()
+        render_product_paths = {item.render_product_path for item in render_data}
         products = self._renderer.step(
-            render_products=set(self._render_product_paths),
-            delta_time=1.0 / 60.0,
+            render_products=render_product_paths,
+            delta_time=delta_time,
             ordinal=self._current_ordinal,
         )
         self._current_ordinal += 1
-        product_path = self._render_product_paths[0]
-        if product_path in products and len(products[product_path].frames) > 0:
-            self._process_render_frame(
-                render_data,
-                products[product_path].frames[0],
-                render_data.warp_buffers,
-            )
-
-        # Post-render PPISP: HDR scene-linear → LDR RGBA. Source/destination
-        # buffers are the same warp buffer map used by extraction.
-        if render_data.ppisp_pipeline is not None:
-            render_data.ppisp_pipeline.apply(
-                render_data.warp_buffers[str(RenderBufferKind.RGB_HDR)],
-                render_data.warp_buffers[str(RenderBufferKind.RGBA)],
-            )
+        self._route_render_products(render_data, products)
 
     def _close_ovstage(self) -> None:
         """Release the renderer's stage queries, path lists and ovstage stage. See :meth:`close`."""
@@ -2195,10 +2254,11 @@ class OVRTXRenderer(BaseRenderer):
                 if "destroyed" not in str(e).lower():
                     logger.warning("Error destroying %s path list: %s", name, e)
 
-        _safe_release_query(self._camera_xform_query, "camera transforms")
-        self._camera_xform_query = None
-        _safe_destroy_path_list(self._camera_paths_list, "camera paths")
-        self._camera_paths_list = None
+        for index, item in enumerate(getattr(self, "_render_data", ())):
+            _safe_release_query(getattr(item, "camera_xform_query", None), f"camera {index} transforms")
+            item.camera_xform_query = None
+            _safe_destroy_path_list(getattr(item, "camera_paths_list", None), f"camera {index} paths")
+            item.camera_paths_list = None
         _safe_release_query(self._object_xform_query, "object transforms")
         self._object_xform_query = None
         _safe_destroy_path_list(self._object_paths_list, "object paths")
@@ -2225,7 +2285,7 @@ class OVRTXRenderer(BaseRenderer):
         # Both are guarded because close() can run before initialization completed — the sim was
         # never played, or scene setup raised — and it must stay a no-op when called twice.
         # detach_ovstage() raises when nothing is attached, and the ExitStack does not exist until
-        # _initialize_from_spec_ovstage creates it.
+        # _initialize_from_render_data_ovstage creates it.
         if self._renderer is not None and self._stage is not None:
             self._renderer.detach_ovstage()
         self._renderer = None
@@ -2237,6 +2297,8 @@ class OVRTXRenderer(BaseRenderer):
         self._stage_paths = None
 
         self._render_product_paths.clear()
+        if hasattr(self, "_render_data"):
+            self._render_data.clear()
         self._output_id_color_buffers.clear()
         self._initialized_scene = False
         self._current_ordinal = 0

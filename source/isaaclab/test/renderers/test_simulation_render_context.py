@@ -37,6 +37,7 @@ class _FakeBackend(BaseRenderer):
         "_update_transforms_hits",
         "_update_geometries_hits",
         "_event_log",
+        "_reset_hits",
         "_close_hits",
         "_close_raises",
     )
@@ -48,6 +49,7 @@ class _FakeBackend(BaseRenderer):
         update_transforms_hits: list[int] | None = None,
         update_geometries_hits: list[int] | None = None,
         event_log: list[str] | None = None,
+        reset_hits: list[int] | None = None,
         close_hits: list[Any] | None = None,
         close_raises: bool = False,
     ) -> None:
@@ -56,6 +58,7 @@ class _FakeBackend(BaseRenderer):
         self._update_transforms_hits = update_transforms_hits
         self._update_geometries_hits = update_geometries_hits
         self._event_log = event_log
+        self._reset_hits = reset_hits
         self._close_hits = close_hits
         self._close_raises = close_raises
 
@@ -97,6 +100,10 @@ class _FakeBackend(BaseRenderer):
 
     def cleanup(self, render_data: Any) -> None:
         pass
+
+    def reset(self) -> None:
+        if self._reset_hits is not None:
+            self._reset_hits.append(1)
 
     def close(self) -> None:
         if self._close_hits is not None:
@@ -202,6 +209,92 @@ def test_render_into_camera_calls_update_render_read_order():
     assert events == ["ut", "geo", "render", "read", "render", "read"]
 
 
+def test_complete_render_set_batches_registered_cameras_once_per_physics_step():
+    """A temporal backend renders every registered camera together once per physics step."""
+
+    class CompleteSetBackend(_FakeBackend):
+        def requires_complete_render_set(self) -> bool:
+            return True
+
+        def render_many(self, render_data: tuple[Any, ...], delta_time: float) -> None:
+            events.append(f"batch:{','.join(render_data)}:{delta_time}")
+
+    ctx = RenderContext()
+    events: list[str] = []
+    cfg = IsaacRtxRendererCfg()
+    backend = CompleteSetBackend(event_log=events)
+    _set_entries(ctx, (cfg, backend))
+
+    camera_a = CameraData()
+    camera_b = CameraData()
+    ctx.register_camera(
+        cast(BaseRenderer, backend),
+        "front",
+        camera_a,
+        lambda: events.append("prepare:front"),
+    )
+    ctx.register_camera(
+        cast(BaseRenderer, backend),
+        "wrist",
+        camera_b,
+        lambda: events.append("prepare:wrist"),
+    )
+
+    ctx.render_into_camera(
+        cast(BaseRenderer, backend),
+        "front",
+        camera_a,
+        physics_step_count=5,
+        render_delta_time=0.05,
+    )
+    ctx.render_into_camera(
+        cast(BaseRenderer, backend),
+        "wrist",
+        camera_b,
+        physics_step_count=5,
+        render_delta_time=0.05,
+    )
+
+    assert events == [
+        "prepare:front",
+        "prepare:wrist",
+        "ut",
+        "geo",
+        "batch:front,wrist:0.05",
+        "read",
+        "read",
+    ]
+
+
+def test_complete_render_set_rerenders_after_explicit_camera_invalidation():
+    """A camera reset invalidates a same-physics-step camera batch."""
+
+    class CompleteSetBackend(_FakeBackend):
+        def requires_complete_render_set(self) -> bool:
+            return True
+
+        def render_many(self, render_data: tuple[Any, ...], delta_time: float) -> None:
+            events.append(f"batch:{','.join(render_data)}")
+
+    ctx = RenderContext()
+    events: list[str] = []
+    cfg = IsaacRtxRendererCfg()
+    backend = CompleteSetBackend(event_log=events)
+    _set_entries(ctx, (cfg, backend))
+
+    camera_a = CameraData()
+    camera_b = CameraData()
+    ctx.register_camera(cast(BaseRenderer, backend), "front", camera_a, lambda: None)
+    ctx.register_camera(cast(BaseRenderer, backend), "wrist", camera_b, lambda: None)
+
+    ctx.render_into_camera(cast(BaseRenderer, backend), "front", camera_a, physics_step_count=5)
+    ctx.render_into_camera(cast(BaseRenderer, backend), "wrist", camera_b, physics_step_count=5)
+    ctx.invalidate_camera_output(cast(BaseRenderer, backend))
+    ctx.render_into_camera(cast(BaseRenderer, backend), "front", camera_a, physics_step_count=5)
+
+    assert events.count("batch:front,wrist") == 2
+
+
 def test_reset_stage_prepare_flag_allows_second_prepare_stage():
     """After reset_stage_prepare_flag, ensure_prepare_stage invokes prepare_stage again."""
     ctx = RenderContext()
@@ -234,6 +327,18 @@ def test_reset_scene_state_cadence_allows_repeat_update_scene_state_same_step():
     ctx.reset_scene_state_cadence()
     ctx.update_scene_state(1)
     assert len(hits) == 2
+
+
+def test_reset_scene_state_cadence_resets_renderer_histories():
+    """Environment reset clears temporal histories on every shared renderer."""
+    ctx = RenderContext()
+    reset_hits: list[int] = []
+    cfg = IsaacRtxRendererCfg()
+    _set_entries(ctx, (cfg, _FakeBackend(reset_hits=reset_hits)))
+
+    ctx.reset_scene_state_cadence()
+
+    assert reset_hits == [1]
 
 
 def test_close_closes_every_backend_once_and_drops_them():

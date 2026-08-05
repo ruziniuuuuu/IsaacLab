@@ -24,7 +24,9 @@ pytestmark = [
 
 if not _MISSING_MODULES:
     from isaaclab_ov.renderers.ovrtx_usd import (  # noqa: E402
+        RenderProductUsdSpec,
         build_render_product_as_string,
+        build_render_products_as_string,
         build_render_scope_usd,
         create_scene_partition_attributes,
         export_stage_to_string,
@@ -38,11 +40,13 @@ else:
     Usd = None
     UsdGeom = None
     build_render_product_as_string = None
+    build_render_products_as_string = None
     build_render_scope_usd = None
     create_scene_partition_attributes = None
     export_stage_to_string = None
     get_render_var_config = None
     get_render_var_configs = None
+    RenderProductUsdSpec = None
 
 
 def _make_multi_env_stage(num_envs: int) -> Usd.Stage:
@@ -120,6 +124,38 @@ def test_render_product_initially_targets_only_the_resolvable_source_camera():
     assert "rel camera = [</World/envs/env_0/Robot/head_cam>]" in render_product
     assert "/World/envs/env_1/Robot/head_cam" not in render_product
     assert "uniform int2 resolution = (32, 16)" in render_product
+
+
+def test_render_products_author_independent_camera_relationships_in_one_scope():
+    """One shared OVRTX stage contains a distinct RenderProduct for each logical camera."""
+    render_scope, paths = build_render_products_as_string(
+        (
+            RenderProductUsdSpec(
+                name="RenderProduct_0",
+                width=16,
+                height=8,
+                num_envs=4,
+                data_types=("rgb",),
+                camera_rel_path="Robot/head",
+            ),
+            RenderProductUsdSpec(
+                name="RenderProduct_1",
+                width=16,
+                height=8,
+                num_envs=4,
+                data_types=("rgb",),
+                camera_rel_path="Robot/wrist",
+            ),
+        )
+    )
+
+    assert paths == ("/Render/RenderProduct_0", "/Render/RenderProduct_1")
+    assert render_scope.count('def RenderProduct "') == 2
+    assert 'def RenderProduct "RenderProduct_0"' in render_scope
+    assert 'def RenderProduct "RenderProduct_1"' in render_scope
+    assert "rel camera = [</World/envs/env_0/Robot/head>]" in render_scope
+    assert "rel camera = [</World/envs/env_0/Robot/wrist>]" in render_scope
+    assert render_scope.count('def RenderVar "LdrColor"') == 1
 
 
 def test_ovrtx_rgb_and_rgb_hdr_author_both_render_vars():

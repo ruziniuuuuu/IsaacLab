@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 from isaaclab.sensors.camera.camera_data import CameraData
@@ -17,6 +19,16 @@ from .renderer import Renderer
 from .renderer_cfg import RendererCfg
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _CameraEntry:
+    """One camera registered in a renderer-wide render set."""
+
+    renderer: BaseRenderer
+    render_data: Any
+    camera_data: CameraData
+    prepare_for_render: Callable[[], None]
 
 
 class RenderContext:
@@ -37,6 +49,8 @@ class RenderContext:
         "_prepared_renderer_ids",
         "_prepared_num_envs",
         "_last_scene_state_step",
+        "_camera_entries",
+        "_last_complete_render_step",
     )
 
     def __init__(self) -> None:
@@ -45,6 +59,8 @@ class RenderContext:
         self._prepared_renderer_ids: set[int] = set()
         self._prepared_num_envs: int | None = None
         self._last_scene_state_step: int | None = None
+        self._camera_entries: list[_CameraEntry] = []
+        self._last_complete_render_step: dict[int, int] = {}
 
     def _check_global_settings_compatible(self, cfg: RendererCfg) -> None:
         """Reject conflicting process-global renderer settings."""
@@ -148,11 +164,56 @@ class RenderContext:
         render_data: Any,
         camera_data: CameraData,
         physics_step_count: int,
+        render_delta_time: float = 1.0 / 60.0,
     ) -> None:
         """Sync scene state, render, and read outputs into ``camera_data``."""
+        if renderer.requires_complete_render_set():
+            renderer_id = id(renderer)
+            entries = [entry for entry in self._camera_entries if entry.renderer is renderer]
+            if not entries:
+                raise RuntimeError(
+                    "A renderer requiring a complete render set has no registered cameras. "
+                    "Register camera render data before requesting output."
+                )
+            if self._last_complete_render_step.get(renderer_id) == physics_step_count:
+                return
+            for entry in entries:
+                entry.prepare_for_render()
+            self.update_scene_state(physics_step_count)
+            renderer.render_many(tuple(entry.render_data for entry in entries), render_delta_time)
+            for entry in entries:
+                renderer.read_output(entry.render_data, entry.camera_data)
+            self._last_complete_render_step[renderer_id] = physics_step_count
+            return
+
         self.update_scene_state(physics_step_count)
         renderer.render(render_data)
         renderer.read_output(render_data, camera_data)
+
+    def register_camera(
+        self,
+        renderer: BaseRenderer,
+        render_data: Any,
+        camera_data: CameraData,
+        prepare_for_render: Callable[[], None],
+    ) -> None:
+        """Register one camera in its renderer's simulation-scoped render set."""
+        if any(entry.render_data is render_data for entry in self._camera_entries):
+            raise ValueError("Camera render data is already registered with this RenderContext.")
+        self._camera_entries.append(_CameraEntry(renderer, render_data, camera_data, prepare_for_render))
+
+    def invalidate_camera_output(self, renderer: BaseRenderer) -> None:
+        """Invalidate a renderer-wide camera batch without advancing physics."""
+        self._last_complete_render_step.pop(id(renderer), None)
+
+    def unregister_camera(self, renderer: BaseRenderer, render_data: Any) -> None:
+        """Remove one camera from its renderer's simulation-scoped render set."""
+        self._camera_entries = [
+            entry
+            for entry in self._camera_entries
+            if not (entry.renderer is renderer and entry.render_data is render_data)
+        ]
+        self._last_complete_render_step.pop(id(renderer), None)
 
     def reset_stage_prepare_flag(self) -> None:
         """Allow :meth:`ensure_prepare_stage` to run ``prepare_stage`` again (e.g. a new USD stage)."""
@@ -160,8 +221,11 @@ class RenderContext:
         self._prepared_num_envs = None
 
     def reset_scene_state_cadence(self) -> None:
-        """Clear per-step scene state update dedupe (e.g. a long pause with no physics)."""
+        """Clear per-step dedupe and renderer state after an environment reset."""
         self._last_scene_state_step = None
+        self._last_complete_render_step.clear()
+        for _cfg, renderer in self._renderer_entries:
+            renderer.reset()
 
     def close(self) -> None:
         """Close every registered backend and drop it from this context.
@@ -186,6 +250,8 @@ class RenderContext:
         self._prepared_renderer_ids.clear()
         self._prepared_num_envs = None
         self._last_scene_state_step = None
+        self._camera_entries.clear()
+        self._last_complete_render_step.clear()
         self._physics_initialized = False
 
         if errors:

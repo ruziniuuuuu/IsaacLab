@@ -105,8 +105,9 @@ def _make_ovrtx_renderer_without_backend() -> OVRTXRenderer:
         write_attribute=lambda *args, **kwargs: None,
     )
     renderer._clone_plan = None
-    renderer._camera_rel_path = "Camera"
     renderer._render_product_paths = []
+    renderer._render_data = []
+    renderer._device = "cpu"
     renderer._exported_usd_string = None
     renderer._initialized_scene = False
     renderer._use_ovstage = False
@@ -403,8 +404,8 @@ def test_prepare_stage_skips_temp_usd_write_when_temp_usd_dir_unset(monkeypatch:
     assert write_calls == []
 
 
-def test_initialize_from_spec_writes_combined_stage_dump(tmp_path: Path):
-    """_initialize_from_spec writes the combined stage when temp_usd_dir is set."""
+def test_initialize_from_render_data_writes_combined_stage_dump(tmp_path: Path):
+    """Complete camera registration writes the combined stage when temp_usd_dir is set."""
     renderer = _make_ovrtx_renderer_without_backend()
     renderer.cfg.temp_usd_dir = str(tmp_path)
     renderer._exported_usd_string = "#usda 1.0\n"
@@ -413,18 +414,20 @@ def test_initialize_from_spec_writes_combined_stage_dump(tmp_path: Path):
     renderer._renderer.open_usd_from_string = lambda usd_string: open_calls.append(usd_string)
     renderer._renderer.bind_attribute = lambda **kwargs: object()
     renderer._renderer.write_attribute = lambda **kwargs: None
+    renderer._write_cached_camera_transforms = lambda _render_data: None
 
-    renderer._initialize_from_spec(_make_camera_render_spec(num_envs=1))
+    render_data = renderer.create_render_data(_make_camera_render_spec(num_envs=1))
+    renderer._initialize_from_render_data((render_data,))
 
     combined_path = tmp_path / _OVRTX_STAGE_FILE
     combined_text = combined_path.read_text(encoding="utf-8")
     assert combined_text.startswith("#usda 1.0")
-    assert 'def RenderProduct "RenderProduct"' in combined_text
+    assert 'def RenderProduct "RenderProduct_0"' in combined_text
     assert open_calls == [combined_text]
     assert renderer._exported_usd_string is None
 
 
-def test_initialize_from_spec_refreshes_camera_relationship_after_cloning():
+def test_initialize_from_render_data_refreshes_camera_relationship_after_cloning():
     """Multi-environment initialization rewrites the RenderProduct cameras after cloning."""
     num_envs = 4
     renderer = _make_ovrtx_renderer_without_backend()
@@ -446,14 +449,17 @@ def test_initialize_from_spec_refreshes_camera_relationship_after_cloning():
     renderer._renderer.write_attribute = lambda **_kwargs: None
     renderer._setup_xform_bindings = lambda: None
     renderer._setup_deformable_bindings = lambda _num_envs: None
+    renderer._setup_particle_bindings = lambda: None
+    renderer._write_cached_camera_transforms = lambda _render_data: None
 
     spec = _make_camera_render_spec(num_envs=num_envs)
-    renderer._initialize_from_spec(spec)
+    render_data = renderer.create_render_data(spec)
+    renderer._initialize_from_render_data((render_data,))
 
     assert call_order == ["open", "clone", "partitions", "rewrite_cameras"]
     assert write_array_calls == [
         (
-            ["/Render/RenderProduct"],
+            ["/Render/RenderProduct_0"],
             "camera",
             [[f"/World/envs/env_{env_id}/Camera" for env_id in range(num_envs)]],
         )

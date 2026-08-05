@@ -11,6 +11,7 @@ import pytest
 import torch
 import warp as wp
 
+from isaaclab.renderers import CameraRenderSpec
 from isaaclab.sensors.camera import CameraCfg
 from isaaclab.sensors.camera.camera_data import CameraData, RenderBufferKind, RenderBufferSpec
 from isaaclab.sim import PinholeCameraCfg
@@ -67,13 +68,251 @@ def _make_ovrtx_render_data() -> OVRTXRenderData:
     rd.warp_buffers = {}
     rd.renderer_info = {}
     rd.ppisp_pipeline = None
+    rd.camera_xform_binding = None
+    rd.camera_xform_query = None
+    rd.camera_paths_list = None
     return rd
 
 
 def _make_ovrtx_renderer_without_backend() -> OVRTXRenderer:
     renderer = OVRTXRenderer.__new__(OVRTXRenderer)
     renderer.cfg = OVRTXRendererCfg()
+    renderer._warmup_remaining = 0
+    renderer._render_data = []
     return renderer
+
+
+def _make_render_spec(camera_name: str) -> CameraRenderSpec:
+    cfg = _make_camera_cfg(["rgb"])
+    cfg.prim_path = f"/World/envs/env_.*/Robot/{camera_name}"
+    return CameraRenderSpec(
+        cfg=cfg,
+        device="cpu",
+        num_instances=2,
+        camera_prim_paths=(
+            f"/World/envs/env_0/Robot/{camera_name}",
+            f"/World/envs/env_1/Robot/{camera_name}",
+        ),
+        view_count=2,
+        camera_path_relative_to_env_0=f"Robot/{camera_name}",
+    )
+
+
+def test_create_render_data_reserves_one_render_product_per_logical_camera():
+    """Camera registration is side-effect free and gives every camera an independent history."""
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer._device = "cpu"
+    renderer._initialized_scene = False
+    renderer._render_product_paths = []
+    renderer._render_data = []
+
+    head = renderer.create_render_data(_make_render_spec("head"))
+    wrist = renderer.create_render_data(_make_render_spec("wrist"))
+
+    assert head.render_product_path == "/Render/RenderProduct_0"
+    assert wrist.render_product_path == "/Render/RenderProduct_1"
+    assert renderer._render_product_paths == [head.render_product_path, wrist.render_product_path]
+    assert renderer._initialized_scene is False
+
+
+def test_render_many_steps_all_products_once_and_routes_each_frame(monkeypatch):
+    """A camera batch preserves every temporal history and routes frames by product path."""
+
+    class Completion:
+        def wait(self) -> None:
+            return
+
+    class Stage:
+        def advance_write_floor(self, *, ordinal: int) -> Completion:
+            assert ordinal == 7
+            return Completion()
+
+    class ProductOutput:
+        def __init__(self, frame: str):
+            self.frames = [frame]
+
+    class ProductSetOutputs:
+        """Match OVRTX's path-indexable result, which intentionally has no ``get``."""
+
+        def __init__(self, products: dict[str, ProductOutput]):
+            self._products = products
+
+        def __contains__(self, path: str) -> bool:
+            return path in self._products
+
+        def __getitem__(self, path: str) -> ProductOutput:
+            return self._products[path]
+
+    step_calls: list[tuple[set[str], float, int]] = []
+
+    class Backend:
+        def step(self, *, render_products: set[str], delta_time: float, ordinal: int):
+            step_calls.append((render_products, delta_time, ordinal))
+            return ProductSetOutputs({path: ProductOutput(path) for path in render_products})
+
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer._use_ovstage = True
+    renderer._initialized_scene = True
+    renderer._stage = Stage()
+    renderer._renderer = Backend()
+    renderer._current_ordinal = 7
+
+    head = _make_ovrtx_render_data()
+    head.render_product_path = "/Render/RenderProduct_0"
+    wrist = _make_ovrtx_render_data()
+    wrist.render_product_path = "/Render/RenderProduct_1"
+    renderer._render_data = [head, wrist]
+    renderer._render_product_paths = [head.render_product_path, wrist.render_product_path]
+
+    routed: list[tuple[OVRTXRenderData, str]] = []
+    monkeypatch.setattr(
+        renderer,
+        "_process_render_frame",
+        lambda render_data, frame, _buffers: routed.append((render_data, frame)),
+    )
+
+    renderer.render_many((head, wrist), delta_time=0.05)
+
+    assert step_calls == [
+        ({head.render_product_path, wrist.render_product_path}, 0.05, 7),
+    ]
+    assert routed == [
+        (head, head.render_product_path),
+        (wrist, wrist.render_product_path),
+    ]
+
+
+def test_render_many_rejects_a_partial_or_reordered_product_set():
+    """No caller may silently discard another camera's temporal history."""
+    renderer = _make_ovrtx_renderer_without_backend()
+    head = _make_ovrtx_render_data()
+    wrist = _make_ovrtx_render_data()
+    renderer._render_data = [head, wrist]
+
+    with pytest.raises(RuntimeError, match="every registered camera"):
+        renderer.render_many((head,), delta_time=0.05)
+    with pytest.raises(RuntimeError, match="registration order"):
+        renderer.render_many((wrist, head), delta_time=0.05)
+
+
+def test_single_render_entry_point_submits_the_complete_registered_set(monkeypatch):
+    """The legacy one-camera API remains history-safe for a complete-set backend."""
+    renderer = _make_ovrtx_renderer_without_backend()
+    head = _make_ovrtx_render_data()
+    wrist = _make_ovrtx_render_data()
+    renderer._render_data = [head, wrist]
+    calls: list[tuple[tuple[OVRTXRenderData, ...], float]] = []
+    monkeypatch.setattr(
+        renderer,
+        "render_many",
+        lambda items, delta_time: calls.append((tuple(items), delta_time)),
+    )
+
+    renderer.render(wrist)
+
+    assert calls == [((head, wrist), 1.0 / 60.0)]
+
+
+def test_first_render_initializes_scene_from_every_registered_camera(monkeypatch):
+    """Deferred scene loading sees the complete logical-camera set before rendering starts."""
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer._use_ovstage = True
+    renderer._initialized_scene = False
+
+    head = _make_ovrtx_render_data()
+    head.render_product_path = "/Render/RenderProduct_0"
+    wrist = _make_ovrtx_render_data()
+    wrist.render_product_path = "/Render/RenderProduct_1"
+    renderer._render_data = [head, wrist]
+
+    initialized_with: list[tuple[OVRTXRenderData, ...]] = []
+
+    def initialize(render_data: tuple[OVRTXRenderData, ...]) -> None:
+        initialized_with.append(render_data)
+        renderer._initialized_scene = True
+
+    monkeypatch.setattr(renderer, "_initialize_from_render_data", initialize, raising=False)
+    monkeypatch.setattr(renderer, "_render_ovstage_many", lambda *_args: None)
+
+    renderer.render_many((head, wrist), delta_time=0.05)
+
+    assert initialized_with == [(head, wrist)]
+
+
+def test_first_render_warms_up_complete_product_set_before_capture(monkeypatch):
+    """RTPT warm-up advances all products together and runs only once after scene load."""
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer._use_ovstage = True
+    renderer._initialized_scene = True
+    renderer._warmup_remaining = 3
+    render_data = (_make_ovrtx_render_data(), _make_ovrtx_render_data())
+    renderer._render_data = list(render_data)
+
+    events: list[tuple[str, int | float]] = []
+    monkeypatch.setattr(
+        renderer,
+        "_warm_up_render_products",
+        lambda items, count, delta_time: events.append(("warmup", count)) or setattr(renderer, "_warmup_remaining", 0),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        renderer,
+        "_render_ovstage_many",
+        lambda _items, delta_time: events.append(("capture", delta_time)),
+    )
+
+    renderer.render_many(render_data, delta_time=0.05)
+    renderer.render_many(render_data, delta_time=0.05)
+
+    assert events == [("warmup", 3), ("capture", 0.05), ("capture", 0.05)]
+
+
+def test_warmup_steps_every_product_for_every_discarded_frame():
+    """Warm-up cannot converge one camera by invalidating another camera's history."""
+
+    class Backend:
+        def __init__(self) -> None:
+            self.calls: list[tuple[set[str], float]] = []
+
+        def step(self, *, render_products: set[str], delta_time: float):
+            self.calls.append((render_products, delta_time))
+
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer._use_ovstage = False
+    renderer._renderer = Backend()
+    renderer._warmup_remaining = 2
+    head = _make_ovrtx_render_data()
+    head.render_product_path = "/Render/RenderProduct_0"
+    wrist = _make_ovrtx_render_data()
+    wrist.render_product_path = "/Render/RenderProduct_1"
+
+    renderer._warm_up_render_products((head, wrist), frame_count=2, delta_time=0.05)
+
+    expected_paths = {head.render_product_path, wrist.render_product_path}
+    assert renderer._renderer.calls == [(expected_paths, 0.05), (expected_paths, 0.05)]
+    assert renderer._warmup_remaining == 0
+
+
+def test_reset_clears_temporal_histories_and_rearms_warmup():
+    """Episode reset drops stale DLSS history before randomized poses are captured."""
+
+    class Backend:
+        def __init__(self) -> None:
+            self.reset_hits = 0
+
+        def reset(self) -> None:
+            self.reset_hits += 1
+
+    renderer = _make_ovrtx_renderer_without_backend()
+    renderer.cfg.warmup_frames = 7
+    renderer._warmup_remaining = 0
+    renderer._initialized_scene = True
+    renderer._renderer = Backend()
+
+    renderer.reset()
+
+    assert renderer._renderer.reset_hits == 1
+    assert renderer._warmup_remaining == 7
 
 
 def test_ovrtx_supported_output_types_key_set():
@@ -421,7 +660,9 @@ def _make_legacy_renderer_with_backend(events: list[str]) -> OVRTXRenderer:
 
     renderer = _make_ovrtx_renderer_without_backend()
     renderer._use_ovstage = False
-    renderer._camera_xform_binding = _RecordingBinding(events, "camera")
+    render_data = _make_ovrtx_render_data()
+    render_data.camera_xform_binding = _RecordingBinding(events, "camera")
+    renderer._render_data = [render_data]
     renderer._object_xform_binding = _RecordingBinding(events, "object")
     renderer._deformable_points_binding = _RecordingBinding(events, "deformable")
     renderer._particle_points_binding = _RecordingBinding(events, "particle")
@@ -465,8 +706,10 @@ def _make_ovstage_renderer_with_backend(events: list[str]) -> OVRTXRenderer:
     renderer._use_ovstage = True
     renderer._stage = Stage()
     renderer._stage_paths = StagePaths()
-    renderer._camera_xform_query = "camera"
-    renderer._camera_paths_list = "camera"
+    render_data = _make_ovrtx_render_data()
+    render_data.camera_xform_query = "camera"
+    render_data.camera_paths_list = "camera"
+    renderer._render_data = [render_data]
     renderer._object_xform_query = "object"
     renderer._object_paths_list = "object"
     renderer._deformable_points_query = "deformable"
@@ -502,7 +745,6 @@ def test_ovrtx_close_releases_legacy_renderer_state():
         "unbind:particle",
         "reset_stage",
     ]
-    assert renderer._camera_xform_binding is None
     assert renderer._object_xform_binding is None
     assert renderer._deformable_points_binding is None
     assert renderer._particle_points_binding is None
@@ -538,7 +780,6 @@ def test_ovrtx_close_releases_ovstage_renderer_state():
         "detach_ovstage",
         "exit_stack_close",
     ]
-    assert renderer._camera_xform_query is None
     assert renderer._particle_paths_list is None
     assert renderer._object_newton_indices is None
     assert renderer._env_root_xforms is None

@@ -9,10 +9,25 @@ from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 from pxr import Sdf, Usd, UsdGeom
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RenderProductUsdSpec:
+    """USD inputs for one logical camera RenderProduct."""
+
+    name: str
+    width: int
+    height: int
+    num_envs: int
+    data_types: tuple[str, ...]
+    camera_rel_path: str
+    minimal_mode: int | None = None
 
 
 def get_render_var_config(data_types: list[str]) -> tuple[str, str, str]:
@@ -165,6 +180,82 @@ def Scope "Render"
     }}
 }}
 '''
+
+
+def build_render_products_as_string(
+    specs: Sequence[RenderProductUsdSpec],
+) -> tuple[str, tuple[str, ...]]:
+    """Build one Render scope containing independent products for logical cameras.
+
+    Render variables are shared by path and authored once, while every product keeps
+    its own camera relationship, resolution, render mode, and temporal history.
+
+    Args:
+        specs: Ordered logical-camera render product specifications.
+
+    Returns:
+        Tuple containing the Render scope USDA and matching absolute product paths.
+
+    Raises:
+        ValueError: If no products are provided or product names are duplicated.
+    """
+    if not specs:
+        raise ValueError("At least one RenderProductUsdSpec is required.")
+    names = tuple(spec.name for spec in specs)
+    if len(set(names)) != len(names):
+        raise ValueError("Render product names must be unique.")
+
+    product_definitions: list[str] = []
+    render_vars_by_path: dict[str, tuple[str, str, str]] = {}
+    for spec in specs:
+        tiled_width, tiled_height = _tiled_resolution(spec.num_envs, spec.width, spec.height)
+        render_var_configs = get_render_var_configs(list(spec.data_types))
+        for render_var in render_var_configs:
+            render_vars_by_path.setdefault(render_var[0], render_var)
+
+        ordered_vars = ", ".join(f"<{path}>" for path, _, _ in render_var_configs)
+        if spec.minimal_mode is None:
+            render_mode_lines = ['token omni:rtx:rendermode = "RealTimePathTracing"']
+        else:
+            render_mode_lines = [
+                'token omni:rtx:rendermode = "Minimal"',
+                f"int omni:rtx:minimal:mode = {spec.minimal_mode}",
+            ]
+        render_mode_block = "\n            ".join(render_mode_lines)
+        product_definitions.append(
+            f'''    def RenderProduct "{spec.name}" (
+        prepend apiSchemas = ["OmniRtxSettingsCommonAdvancedAPI_1"]
+    ) {{
+        rel camera = [</World/envs/env_0/{spec.camera_rel_path}>]
+        token omni:rtx:background:source:type = "domeLight"
+        float omni:rtx:rt:ambientLight:intensity = 1.0
+        {render_mode_block}
+        token[] omni:rtx:waitForEvents = ["AllLoadingFinished", "OnlyOnFirstRequest"]
+        rel orderedVars = [{ordered_vars}]
+        uniform int2 resolution = ({tiled_width}, {tiled_height})
+    }}'''
+        )
+
+    render_var_definitions = "\n".join(
+        f'''        def RenderVar "{name}"
+        {{
+            uniform string sourceName = "{source}"
+        }}'''
+        for _, name, source in render_vars_by_path.values()
+    )
+    product_block = "\n".join(product_definitions)
+    render_scope = f"""
+def Scope "Render"
+{{
+{product_block}
+
+    def "Vars"
+    {{
+{render_var_definitions}
+    }}
+}}
+"""
+    return render_scope, tuple(f"/Render/{name}" for name in names)
 
 
 def _tiled_resolution(num_envs: int, width: int, height: int) -> tuple[int, int]:

@@ -40,6 +40,14 @@ class OVRTXRendererCfg(RendererCfg):
     log_file_path: str = os.path.join(tempfile.gettempdir(), "ovrtx_renderer.log")
     """Path for OVRTX log file. Defaults to ``<system temp>/ovrtx_renderer.log``."""
 
+    warmup_frames: int = 40
+    """RTPT frames rendered and discarded after scene load before the first camera capture.
+
+    OVRTX streams textures and converges its real-time path tracer over several frames.
+    Forty frames is the runtime's recommended production-quality default. Set to zero
+    only for latency-focused smoke tests where initial image quality is irrelevant.
+    """
+
     colorize_semantic_segmentation: bool = True
     """Whether to colorize semantic segmentation output. Defaults to True.
 

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .camera_render_spec import CameraRenderSpec
@@ -42,6 +43,14 @@ class BaseRenderer(ABC):
 
     def initialize(self) -> None:
         """Post-physics one-time initialization hook. Called only once."""
+        return
+
+    def reset(self) -> None:
+        """Reset renderer state that must not cross an environment reset.
+
+        Stateless backends keep the default no-op. Temporal backends override this
+        hook to clear accumulated image histories before randomized poses are rendered.
+        """
         return
 
     def prepare_cameras(self, stage: Any, spec: CameraRenderSpec) -> None:
@@ -155,6 +164,28 @@ class BaseRenderer(ABC):
             render_data: The render data object from :meth:`create_render_data`.
         """
         pass
+
+    def requires_complete_render_set(self) -> bool:
+        """Whether every camera sharing this renderer must be rendered in one step.
+
+        Temporal backends may invalidate histories for render products omitted from a
+        backend step. Such backends override this to request simulation-scoped batching.
+        """
+        return False
+
+    def render_many(self, render_data: Sequence[Any], delta_time: float) -> None:
+        """Render a complete set of camera data for one simulation instant.
+
+        The default preserves the behavior of independent renderers. Backends that
+        return ``True`` from :meth:`requires_complete_render_set` override this method
+        to submit the whole set atomically.
+
+        Args:
+            render_data: Renderer-specific data for every registered camera.
+            delta_time: Elapsed sensor simulation time in seconds.
+        """
+        for item in render_data:
+            self.render(item)
 
     @abstractmethod
     def read_output(self, render_data: Any, camera_data: CameraData) -> None:

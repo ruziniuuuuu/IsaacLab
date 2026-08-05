@@ -459,6 +459,9 @@ class Camera(SensorBase):
         else:
             env_ids_wp = self._resolve_env_ids_wp(env_ids)
             self._update_poses(env_ids_wp, frame_op=2)
+        sim_ctx = sim_utils.SimulationContext.instance()
+        if sim_ctx is not None and self._renderer is not None:
+            sim_ctx.render_context.invalidate_camera_output(self._renderer)
 
     """
     Implementation.
@@ -545,6 +548,12 @@ class Camera(SensorBase):
 
         # Create internal buffers (includes intrinsic matrix and pose init)
         self._create_buffers()
+        sim_ctx.render_context.register_camera(
+            self._renderer,
+            self._render_data,
+            self._data,
+            self._prepare_for_render,
+        )
 
     def _update_buffers_impl(self, env_mask: wp.array):
         if not self._env_mask_has_any(env_mask):
@@ -564,10 +573,15 @@ class Camera(SensorBase):
                 self._render_data,
                 self._data,
                 sim_ctx.get_physics_step_count(),
+                self._sim_physics_dt * sim_ctx.cfg.render_interval,
             )
         else:
             renderer.render(self._render_data)
             renderer.read_output(self._render_data, self._data)
+
+    def _prepare_for_render(self) -> None:
+        """Refresh this camera pose before a renderer-wide camera batch."""
+        self._update_poses()
 
     """
     Private Helpers
@@ -808,6 +822,9 @@ class Camera(SensorBase):
     def _invalidate_initialize_callback(self, event):
         """Invalidates the scene elements."""
         if self._renderer is not None and self._render_data is not None:
+            sim_ctx = sim_utils.SimulationContext.instance()
+            if sim_ctx is not None:
+                sim_ctx.render_context.unregister_camera(self._renderer, self._render_data)
             self._renderer.cleanup(self._render_data)
         self._render_data = None
         self._renderer = None
