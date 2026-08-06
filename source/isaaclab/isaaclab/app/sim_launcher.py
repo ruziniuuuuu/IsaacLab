@@ -21,6 +21,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+# Work around a known OpenUSD 25.x thread-safety crash in
+# UsdPhysics.LoadUsdPhysicsFromRange for collider-dense assets. OpenUSD reads
+# this once when pxr initializes, so set the safe default before backend imports.
+os.environ.setdefault("PXR_WORK_THREAD_LIMIT", "1")
+
 from isaaclab_newton.physics import NewtonCfg
 from isaaclab_ov.renderers import OVRTXRendererCfg
 from isaaclab_ovphysx.physics import OvPhysxCfg
