@@ -15,7 +15,11 @@ import torch
 import warp as wp
 from isaaclab_visualizers.newton import NewtonVisualizer, NewtonVisualizerCfg
 from isaaclab_visualizers.newton import newton_visualization_markers as newton_markers
-from isaaclab_visualizers.newton.newton_visualizer import NewtonViewerGL
+from isaaclab_visualizers.newton.newton_visualizer import (
+    VISUALIZATION_MARKERS_DEFAULT_OPEN,
+    NewtonViewerGL,
+    _render_contact_controls,
+)
 from isaaclab_visualizers.newton_adapter import (
     VISUALIZER_INFINITE_PLANE_SIZE,
     apply_viewer_visible_worlds,
@@ -164,6 +168,57 @@ def test_newton_visualizer_cfg_exposes_world_spacing():
     cfg = NewtonVisualizerCfg(world_spacing=(2.0, 2.0, 0.0))
 
     assert cfg.world_spacing == (2.0, 2.0, 0.0)
+
+
+def test_newton_contact_controls_expose_native_debug_overlays():
+    class _Imgui:
+        SliderFlags_ = SimpleNamespace(logarithmic=SimpleNamespace(value=1))
+
+        def __init__(self):
+            self.checkboxes = []
+            self.sliders = []
+            self.indent_depth = 0
+
+        def checkbox(self, label, value):
+            self.checkboxes.append(label)
+            return False, value
+
+        def indent(self):
+            self.indent_depth += 1
+
+        def unindent(self):
+            self.indent_depth -= 1
+
+        def slider_float(self, label, value, minimum, maximum, *args):
+            self.sliders.append((label, minimum, maximum))
+            return False, value
+
+    imgui = _Imgui()
+    viewer = SimpleNamespace(
+        show_contacts=True,
+        show_contact_normals=True,
+        show_contact_disks=True,
+        show_contact_forces=True,
+        contact_viz_scale=0.2,
+        contact_force_scale=0.5,
+        _contact_viz_scale_default=0.2,
+        _contact_force_scale_default=0.5,
+    )
+    renderer = SimpleNamespace(arrow_scale=1.0)
+
+    _render_contact_controls(imgui, viewer, renderer)
+
+    assert imgui.checkboxes == ["Show Contacts", "Normal", "Contact Mode", "Force"]
+    assert [label for label, _, _ in imgui.sliders] == [
+        "Contact Scale",
+        "Force Relative Scale",
+        "Arrow Thickness",
+    ]
+    assert imgui.indent_depth == 0
+
+
+def test_newton_visualization_markers_open_by_default():
+    assert VISUALIZATION_MARKERS_DEFAULT_OPEN is True
 
 
 def test_newton_visualizer_set_camera_view_updates_cfg_without_viewer():
