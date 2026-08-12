@@ -129,7 +129,7 @@ def test_ovrtx_scene_attribute_update_uses_legacy_renderer():
 
 
 def test_ovrtx_scene_attribute_update_uses_ovstage_asset_semantics():
-    """ovstage receives authored/resolved asset token pairs matching imported USD."""
+    """USD-populated assets are recreated with ovstage's runtime asset semantic."""
     events = []
 
     class Completion:
@@ -153,13 +153,14 @@ def test_ovrtx_scene_attribute_update_uses_ovstage_asset_semantics():
             events.append(("write", query, attribute_name, kwargs))
             return Completion()
 
+        def delete_attributes(self, query, attributes, **kwargs):
+            events.append(("delete", query, attributes, kwargs))
+            return Completion()
+
     class StagePaths:
         def create_path_list_from_strings(self, paths):
             events.append(("create", paths))
             return "paths"
-
-        def intern_token(self, value):
-            return {"/textures/studio.hdr": 31, "/textures/atrium.hdr": 47}[value]
 
         def destroy_path_list(self, path_list):
             events.append(("destroy", path_list))
@@ -178,18 +179,24 @@ def test_ovrtx_scene_attribute_update_uses_ovstage_asset_semantics():
         is_asset_path=True,
     )
 
+    delete = next(event for event in events if event[0] == "delete")
+    assert delete == (
+        "delete",
+        "query",
+        ["texture:file"],
+        {"ordinal": 7},
+    )
     write = next(event for event in events if event[0] == "write")
     assert write[1:3] == ("query", "texture:file")
     kwargs = write[3]
     assert kwargs["ordinal"] == 7
-    assert kwargs["is_array"] is False
-    assert "semantic" not in kwargs
-    tensor = kwargs["tensors"]
-    assert tensor.dtype.code == ovrtx_renderer_module.ovstage.DLDataTypeCode.kDLUInt
-    assert tensor.dtype.bits == 64
-    assert tensor.dtype.lanes == 2
-    assert tensor.shape_tuple == (2,)
-    assert tensor._array.tolist() == [31, 31, 47, 47]
+    assert [bytes(row).decode("utf-8") for row in kwargs["tensors"]] == [
+        "/textures/studio.hdr",
+        "/textures/atrium.hdr",
+    ]
+    assert all(row.dtype == np.uint8 for row in kwargs["tensors"])
+    assert kwargs["is_array"] is True
+    assert kwargs["semantic"] == ovrtx_renderer_module.ovstage.AttributeSemantic.ASSET_STRING
     assert events[-1] == ("destroy", "paths")
 
 

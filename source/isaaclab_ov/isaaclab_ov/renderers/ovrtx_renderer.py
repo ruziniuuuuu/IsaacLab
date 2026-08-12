@@ -148,11 +148,6 @@ if _OVSTAGE_AVAILABLE:
     # via DLPack, so a lanes=3 override on a host numpy array is required to match the column.
     _OVSTAGE_POINT_DTYPE = ovstage.DLDataType(code=ovstage.DLDataTypeCode.kDLFloat, bits=32, lanes=3)
 
-    # Scalar USD asset paths are stored by ovstage as one authored/resolved token-id pair per
-    # prim. Absolute paths have the same authored and resolved value, which is the only form this
-    # targeted runtime-update API accepts.
-    _OVSTAGE_ASSET_PATH_DTYPE = ovstage.DLDataType(code=ovstage.DLDataTypeCode.kDLUInt, bits=64, lanes=2)
-
     def _points_tensor_from_numpy(points: np.ndarray) -> Any:
         """Wrap an ``(N, 3)`` float32 array as a 3-lane DLTensor for ``points`` writes.
 
@@ -1578,21 +1573,23 @@ class OVRTXRenderer(BaseRenderer):
                             raise TypeError("Asset-path scene attributes require a list or tuple of strings")
                         if not all(os.path.isabs(value) for value in values):
                             raise ValueError("Asset-path scene attributes require absolute paths")
-                        token_ids = np.array(
-                            [token for value in values for token in [self._stage_paths.intern_token(value)] * 2],
-                            dtype=np.uint64,
-                        )
-                        tensors = ovstage.make_dltensor(
-                            token_ids,
-                            dtype=_OVSTAGE_ASSET_PATH_DTYPE,
-                            shape=[len(values)],
-                        )
+                        # USD population stores scalar assets in a fixed-width token-pair column,
+                        # while ovstage runtime asset writes use ragged ASSET_STRING rows. Recreate
+                        # the column at the same ordinal before publishing the write floor so
+                        # consumers only observe the correctly typed replacement.
+                        self._stage.delete_attributes(
+                            query,
+                            [attribute_name],
+                            ordinal=self._current_ordinal,
+                        ).wait()
+                        byte_rows = [np.frombuffer(value.encode("utf-8"), dtype=np.uint8) for value in values]
                         self._stage.write_attribute(
                             query,
                             attribute_name,
                             ordinal=self._current_ordinal,
-                            tensors=tensors,
-                            is_array=False,
+                            tensors=byte_rows,
+                            is_array=True,
+                            semantic=ovstage.AttributeSemantic.ASSET_STRING,
                         ).wait()
                     elif isinstance(values, (list, tuple)) and all(isinstance(value, str) for value in values):
                         token_ids = np.array(
